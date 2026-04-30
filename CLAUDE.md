@@ -30,11 +30,16 @@ IPFS frontend (DNSLink → app.gihc.online)
 ### Chat backend (`chat/`)
 
 - **Framework:** Axum 0.7 with `ws` feature
-- **Database:** SQLx 0.8 + PostgreSQL (runtime, not compile-time checked queries)
-- **Auth:** Argon2 password hashing, JWT via `jsonwebtoken`
+- **Database:** SQLx 0.8 + PostgreSQL (runtime API, not compile-time `query!` macro)
+- **Auth:** Argon2id password hashing, JWT via `jsonwebtoken` (HS256)
 - **WebSocket:** one `tokio::sync::broadcast` channel per room, stored in `AppState.rooms: RoomMap`
-- **Migrations:** SQLx migrate (`sqlx::migrate!("./migrations")`) — runs on startup automatically
+- **Migrations:** `sqlx::migrate!("./migrations")` — embedded at compile time, run on startup
 - **CORS:** `tower_http::cors::CorsLayer`, configured via `ALLOWED_ORIGIN` env var
+- **TLS:** uses `rustls` (not `native-tls`) — no OpenSSL dependency needed to compile
+
+#### Crate structure
+
+`chat/src/lib.rs` is the library root — it owns all module declarations and exports `AppState`, `Config`, `RoomMap`, `build_app`, and `build_cors`. `src/main.rs` is a thin binary entrypoint that calls into the lib. This split lets integration tests import the crate.
 
 #### API surface
 | Method | Path | Auth |
@@ -49,6 +54,21 @@ IPFS frontend (DNSLink → app.gihc.online)
 
 #### Auth
 `auth::authenticate(&state, &headers).await?` validates the Bearer token and returns the `User`. Call it at the top of any handler that requires authentication.
+
+The WebSocket handler uses a query param (`?token=<jwt>`) instead of a header because the browser WebSocket API cannot set custom headers on the upgrade request.
+
+#### Tests
+
+```bash
+# Unit tests (no database needed)
+cargo test --lib
+
+# Integration tests (requires a running PostgreSQL instance)
+DATABASE_URL=postgres://user:password@localhost:5432 cargo test
+```
+
+Unit tests live in `src/auth.rs` (JWT, hashing) and `src/ws.rs` (broadcast channels).
+Integration tests in `tests/api.rs` use `#[sqlx::test]` which creates and tears down a temporary database per test.
 
 ### Frontend (`frontend/`)
 
@@ -88,7 +108,7 @@ I produktion (ingen override):
 docker compose -f docker-compose.yml up -d --build
 ```
 
-Rust-imaget bruger two-stage build (`rust:1-slim` builder, `debian:bookworm-slim` runtime). Første build er langsom pga. dependency-kompilering.
+Rust-imaget bruger two-stage build (`rust:1-slim` builder, `debian:bookworm-slim` runtime). Første build er langsom pga. dependency-kompilering. Ingen OpenSSL-afhængighed — rustls compileres statisk ind.
 
 ### Deploying frontend til IPFS
 
@@ -106,3 +126,6 @@ ipfs add -r frontend/
 - **Broadcast channel per room:** simple in-memory fan-out; restarting the server drops active connections (acceptable)
 - **DNSLink on frontend domain:** gives a single stable `ALLOWED_ORIGIN` instead of a wildcard in production
 - **Ansible templates Caddyfile:** Caddy does not support `{env.VAR}` in site addresses, so the domain is rendered by Ansible at deploy time
+- **rustls over native-tls:** no `libssl-dev` or `pkg-config` needed to compile — simpler Dockerfile and local dev setup
+- **lib + bin split:** `src/lib.rs` exports the router and state so integration tests can import the crate without duplicating setup
+- **`authenticate` as plain async fn:** Rust 1.88 tightened lifetime rules for async fns in traits, breaking the `FromRequestParts` extractor approach

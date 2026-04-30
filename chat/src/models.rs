@@ -1,7 +1,11 @@
+//! SQLx row types — one struct per database table (plus one join projection).
+
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use uuid::Uuid;
 
+/// A registered user. `password_hash` is excluded from JSON serialization so
+/// it can never accidentally appear in an API response.
 #[derive(sqlx::FromRow, Serialize, Clone)]
 pub struct User {
     pub id: Uuid,
@@ -27,6 +31,8 @@ pub struct Message {
     pub created_at: DateTime<Utc>,
 }
 
+/// Result of the `messages JOIN users` query. The `user` field is mapped from
+/// the SQL alias `u.username AS "user"` and is the display name for the frontend.
 #[derive(sqlx::FromRow, Serialize)]
 pub struct MessageWithUser {
     pub id: Uuid,

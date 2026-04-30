@@ -1,3 +1,5 @@
+//! `/rooms/*` — list rooms, create rooms, and fetch message history.
+
 use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
@@ -23,6 +25,7 @@ pub struct CreateRoom {
     pub name: String,
 }
 
+/// `GET /rooms` — returns all rooms ordered by creation time. Requires auth.
 pub async fn list(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -37,6 +40,7 @@ pub async fn list(
     Ok(Json(rooms))
 }
 
+/// `POST /rooms` — creates a new room. Returns 400 if the name already exists.
 pub async fn create(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -63,6 +67,9 @@ pub async fn create(
     Ok((StatusCode::CREATED, Json(room)))
 }
 
+/// `GET /rooms/:id/messages` — returns the 50 most recent messages with
+/// their author's username. The LIMIT keeps response sizes bounded; a
+/// cursor-based pagination endpoint would be the next step if history grows.
 pub async fn messages(
     State(state): State<AppState>,
     headers: HeaderMap,

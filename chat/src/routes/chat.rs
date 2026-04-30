@@ -1,3 +1,5 @@
+//! `/ws/:room_id` — WebSocket handler for real-time chat.
+
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -18,6 +20,13 @@ pub struct WsQuery {
     token: String,
 }
 
+/// `GET /ws/:room_id?token=<jwt>` — upgrades to WebSocket after validating the
+/// token.
+///
+/// The token is passed as a query parameter instead of an `Authorization`
+/// header because the browser's WebSocket API does not allow setting custom
+/// headers on the upgrade request. The token is validated before the upgrade
+/// so unauthenticated requests are rejected with a proper HTTP 401.
 pub async fn handler(
     State(state): State<AppState>,
     Path(room_id): Path<Uuid>,
@@ -46,6 +55,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, room_id: Uuid, user: 
 
     broadcast(&tx, "join", &user.username, None, None);
 
+    // Forward incoming broadcast messages to this WebSocket client
     let mut send_task = tokio::spawn(async move {
         while let Ok(msg) = rx.recv().await {
             if sender.send(Message::Text(msg.into())).await.is_err() {
@@ -57,6 +67,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, room_id: Uuid, user: 
     let username = user.username.clone();
     let db = state.db.clone();
     let tx2 = tx.clone();
+    // Read messages from this client, persist them, and broadcast to the room
     let mut recv_task = tokio::spawn(async move {
         while let Some(Ok(Message::Text(text))) = receiver.next().await {
             let Ok(data) = serde_json::from_str::<serde_json::Value>(&text) else {
@@ -81,6 +92,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, room_id: Uuid, user: 
         }
     });
 
+    // When either task exits (client disconnected or send error), abort the other
     tokio::select! {
         _ = &mut send_task => recv_task.abort(),
         _ = &mut recv_task => send_task.abort(),
@@ -89,6 +101,10 @@ async fn handle_socket(socket: WebSocket, state: AppState, room_id: Uuid, user: 
     broadcast(&tx, "leave", &user.username, None, None);
 }
 
+/// Sends a JSON event to all subscribers in the room.
+///
+/// `tx.send` returns `Err` when there are no active receivers — this is
+/// expected (e.g. the last client just left) and can be safely discarded.
 fn broadcast(
     tx: &tokio::sync::broadcast::Sender<String>,
     kind: &str,

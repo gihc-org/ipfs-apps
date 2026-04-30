@@ -1,0 +1,73 @@
+pub mod auth;
+pub mod config;
+pub mod models;
+pub mod routes;
+pub mod ws;
+
+use axum::{
+    http::{HeaderValue, Method},
+    routing::{get, post},
+    Router,
+};
+use sqlx::PgPool;
+use tower_http::cors::{Any, CorsLayer};
+
+pub use config::Config;
+pub use ws::RoomMap;
+
+/// Shared state injected into every Axum handler via `State<AppState>`.
+///
+/// `db` is a connection pool — cloning it is cheap (Arc under the hood).
+/// `rooms` holds in-memory broadcast channels keyed by room UUID string;
+/// restarting the server drops all active WebSocket connections.
+#[derive(Clone)]
+pub struct AppState {
+    pub db: PgPool,
+    pub config: Config,
+    pub rooms: RoomMap,
+}
+
+/// Builds the Axum router with all routes, CORS middleware, and shared state.
+/// Used by both the binary entrypoint and integration tests.
+pub fn build_app(state: AppState) -> Router {
+    let cors = build_cors(&state.config.allowed_origin);
+    Router::new()
+        .route("/auth/register", post(routes::auth::register))
+        .route("/auth/token", post(routes::auth::login))
+        .route("/auth/me", get(routes::auth::me))
+        .route("/rooms", get(routes::rooms::list).post(routes::rooms::create))
+        .route("/rooms/:id/messages", get(routes::rooms::messages))
+        .route("/ws/:room_id", get(routes::chat::handler))
+        .layer(cors)
+        .with_state(state)
+}
+
+/// Builds the CORS layer from an origin string.
+///
+/// `"*"` and a specific origin require different tower-http types (`Any` vs
+/// `HeaderValue`), so they can't be unified into a single code path.
+/// In production `ALLOWED_ORIGIN` is set to the DNSLink domain
+/// (`https://app.gihc.online`) so the wildcard branch is only used locally.
+pub fn build_cors(allowed_origin: &str) -> CorsLayer {
+    let methods = [Method::GET, Method::POST, Method::PUT, Method::DELETE];
+    let headers = [
+        axum::http::header::AUTHORIZATION,
+        axum::http::header::CONTENT_TYPE,
+    ];
+
+    if allowed_origin == "*" {
+        CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(methods)
+            .allow_headers(headers)
+    } else {
+        CorsLayer::new()
+            .allow_origin(
+                allowed_origin
+                    .parse::<HeaderValue>()
+                    .expect("Invalid ALLOWED_ORIGIN"),
+            )
+            .allow_methods(methods)
+            .allow_headers(headers)
+    }
+}

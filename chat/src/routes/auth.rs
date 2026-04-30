@@ -1,3 +1,5 @@
+//! `/auth/*` — register, login, and identity endpoints.
+
 use axum::{extract::State, http::{HeaderMap, StatusCode}, Json};
 use serde::{Deserialize, Serialize};
 
@@ -31,6 +33,10 @@ pub struct TokenResponse {
     pub token_type: String,
 }
 
+/// `POST /auth/register` — creates a new user and returns their id/username.
+///
+/// Returns 400 if the username is already taken. The password is hashed with
+/// Argon2id before storage; the plaintext is never persisted.
 pub async fn register(
     State(state): State<AppState>,
     Json(body): Json<RegisterRequest>,
@@ -60,6 +66,10 @@ pub async fn register(
     ))
 }
 
+/// `POST /auth/token` — validates credentials and returns a JWT bearer token.
+///
+/// Returns a generic 401 for both unknown usernames and wrong passwords
+/// (no information leakage about which users exist).
 pub async fn login(
     State(state): State<AppState>,
     Json(body): Json<LoginRequest>,
@@ -82,6 +92,7 @@ pub async fn login(
     }))
 }
 
+/// `GET /auth/me` — returns the authenticated user's id and username.
 pub async fn me(
     State(state): State<AppState>,
     headers: HeaderMap,
