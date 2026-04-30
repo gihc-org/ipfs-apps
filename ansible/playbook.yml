@@ -83,6 +83,55 @@
         chdir: "{{ project_dir }}"
       register: ipfs_cid
 
+    - name: Get DNS records from Simply.com
+      ansible.builtin.uri:
+        url: "https://api.simply.com/2/my/products/{{ domain }}/dns/records/"
+        method: GET
+        url_username: "{{ simply_account }}"
+        url_password: "{{ simply_api_key }}"
+        force_basic_auth: true
+      register: simply_records
+
+    - name: Find existing _dnslink record id
+      ansible.builtin.set_fact:
+        dnslink_record: >-
+          {{ simply_records.json.records
+             | selectattr('type', 'equalto', 'TXT')
+             | selectattr('name', 'search', '_dnslink\.' + frontend_domain | replace('.' + domain, ''))
+             | list | first | default({}) }}
+
+    - name: Update _dnslink TXT record (existing)
+      ansible.builtin.uri:
+        url: "https://api.simply.com/2/my/products/{{ domain }}/dns/records/{{ dnslink_record.record_id }}/"
+        method: PUT
+        url_username: "{{ simply_account }}"
+        url_password: "{{ simply_api_key }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          type: TXT
+          name: "_dnslink.{{ frontend_domain }}"
+          data: "dnslink=/ipfs/{{ ipfs_cid.stdout | trim }}"
+          ttl: 120
+        status_code: [200]
+      when: dnslink_record.record_id is defined
+
+    - name: Create _dnslink TXT record (new)
+      ansible.builtin.uri:
+        url: "https://api.simply.com/2/my/products/{{ domain }}/dns/records/"
+        method: POST
+        url_username: "{{ simply_account }}"
+        url_password: "{{ simply_api_key }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          type: TXT
+          name: "_dnslink.{{ frontend_domain }}"
+          data: "dnslink=/ipfs/{{ ipfs_cid.stdout | trim }}"
+          ttl: 120
+        status_code: [200, 201]
+      when: dnslink_record.record_id is not defined
+
     - name: Show IPFS CID
       ansible.builtin.debug:
-        msg: "Frontend CID: {{ ipfs_cid.stdout }} — opdater _dnslink.{{ frontend_domain }} til: dnslink=/ipfs/{{ ipfs_cid.stdout }}"
+        msg: "Frontend CID: {{ ipfs_cid.stdout | trim }} — _dnslink.{{ frontend_domain }} opdateret automatisk"

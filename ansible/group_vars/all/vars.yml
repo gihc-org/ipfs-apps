@@ -1,4 +1,6 @@
 domain: gihc.online
+simply_account: "{{ vault_simply_account }}"
+simply_api_key: "{{ vault_simply_api_key }}"
 acme_email: kristian.n.jensen@gmail.com
 postgres_db: chatdb
 postgres_user: chatuser
