@@ -1,3 +1,2 @@
-// Lokal udvikling — opdater til dit domæne før deploy til IPFS
-const API_URL = 'http://localhost:8001';
-const WS_URL  = 'ws://localhost:8001';
+const API_URL = 'https://api.gihc.online';
+const WS_URL  = 'wss://api.gihc.online';

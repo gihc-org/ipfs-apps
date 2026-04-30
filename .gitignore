@@ -8,3 +8,6 @@ chat/target/
 .vscode/
 .idea/
 *.swp
+
+# Screenshots
+*.png

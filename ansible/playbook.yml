@@ -1,0 +1,70 @@
+---
+- name: Deploy chat backend
+  hosts: gihc_vps
+
+  tasks:
+    - name: Install prerequisites
+      ansible.builtin.apt:
+        name: [ca-certificates, curl]
+        state: present
+        update_cache: true
+
+    - name: Add Docker GPG key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+
+    - name: Add Docker apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable"
+        state: present
+
+    - name: Install Docker
+      ansible.builtin.apt:
+        name: [docker-ce, docker-ce-cli, containerd.io, docker-compose-plugin]
+        state: present
+        update_cache: true
+
+    - name: Start and enable Docker
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Create project directory
+      ansible.builtin.file:
+        path: "{{ project_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Sync project files
+      ansible.posix.synchronize:
+        src: "{{ playbook_dir }}/../"
+        dest: "{{ project_dir }}/"
+        rsync_opts:
+          - "--exclude=chat/target"
+          - "--exclude=.git"
+          - "--exclude=.env"
+          - "--exclude=ansible"
+          - "--exclude=docker-compose.override.yml"
+          - "--exclude=frontend"
+
+    - name: Write Caddyfile with domain
+      ansible.builtin.template:
+        src: templates/Caddyfile.j2
+        dest: "{{ project_dir }}/caddy/Caddyfile"
+        mode: "0644"
+
+    - name: Write .env from vault
+      ansible.builtin.template:
+        src: templates/env.j2
+        dest: "{{ project_dir }}/.env"
+        mode: "0600"
+
+    - name: Build and start services
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.yml up -d --build
+        chdir: "{{ project_dir }}"
+      register: compose_result
+      changed_when: "'Started' in compose_result.stdout or 'Created' in compose_result.stdout"

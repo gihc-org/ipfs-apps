@@ -1,0 +1,5 @@
+all:
+  hosts:
+    gihc_vps:
+      ansible_host: 65.109.233.92
+      ansible_user: root

@@ -1,0 +1,6 @@
+domain: gihc.online
+acme_email: kristian.n.jensen@gmail.com
+postgres_db: chatdb
+postgres_user: chatuser
+allowed_origin: "https://app.gihc.online"
+project_dir: /opt/chat

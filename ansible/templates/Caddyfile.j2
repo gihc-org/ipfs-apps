@@ -1,0 +1,7 @@
+{
+    email {{ acme_email }}
+}
+
+api.{{ domain }} {
+    reverse_proxy chat:8001
+}
