@@ -5,3 +5,9 @@
 api.{{ domain }} {
     reverse_proxy chat:8001
 }
+
+app.{{ domain }} {
+    reverse_proxy ipfs:8080 {
+        header_up Host {host}
+    }
+}

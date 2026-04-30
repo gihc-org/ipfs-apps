@@ -28,6 +28,16 @@ services:
       postgres:
         condition: service_healthy
 
+  ipfs:
+    image: ipfs/kubo:latest
+    restart: unless-stopped
+    volumes:
+      - ipfs_data:/data/ipfs
+      - ./frontend:/frontend:ro
+    ports:
+      - "4001:4001"
+      - "4001:4001/udp"
+
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -47,3 +57,4 @@ volumes:
   caddy_data:
   caddy_config:
   postgres_data:
+  ipfs_data:

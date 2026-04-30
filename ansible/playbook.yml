@@ -48,7 +48,6 @@
           - "--exclude=.env"
           - "--exclude=ansible"
           - "--exclude=docker-compose.override.yml"
-          - "--exclude=frontend"
 
     - name: Write Caddyfile with domain
       ansible.builtin.template:
@@ -68,3 +67,22 @@
         chdir: "{{ project_dir }}"
       register: compose_result
       changed_when: "'Started' in compose_result.stdout or 'Created' in compose_result.stdout"
+
+    - name: Wait for IPFS to be ready
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.yml exec -T ipfs ipfs id
+        chdir: "{{ project_dir }}"
+      register: ipfs_ready
+      retries: 10
+      delay: 5
+      until: ipfs_ready.rc == 0
+
+    - name: Add frontend to IPFS
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.yml exec -T ipfs ipfs add -r /frontend/ -Q
+        chdir: "{{ project_dir }}"
+      register: ipfs_cid
+
+    - name: Show IPFS CID
+      ansible.builtin.debug:
+        msg: "Frontend CID: {{ ipfs_cid.stdout }} — opdater _dnslink.app.{{ domain }} til: dnslink=/ipfs/{{ ipfs_cid.stdout }}"
