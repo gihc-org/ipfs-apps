@@ -1,0 +1,7 @@
+{
+    email {env.ACME_EMAIL}
+}
+
+api.{env.DOMAIN} {
+    reverse_proxy chat:8001
+}

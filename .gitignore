@@ -1,0 +1,10 @@
+# Miljø
+.env
+
+# Rust
+chat/target/
+
+# Editor
+.vscode/
+.idea/
+*.swp

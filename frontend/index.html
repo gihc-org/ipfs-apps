@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chat — Log ind</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .container {
+      max-width: 400px;
+      margin: 80px auto;
+      padding: 0 16px;
+    }
+    h1 { font-size: 24px; margin-bottom: 24px; text-align: center; }
+    .tabs { display: flex; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+    .tab {
+      padding: 8px 20px;
+      cursor: pointer;
+      color: var(--text-muted);
+      font-size: 14px;
+      font-weight: 600;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+    }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    form { display: flex; flex-direction: column; gap: 12px; }
+    button[type=submit] { margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>💬 Chat</h1>
+    <div class="card">
+      <div class="tabs">
+        <div class="tab active" data-tab="login">Log ind</div>
+        <div class="tab" data-tab="register">Opret konto</div>
+      </div>
+
+      <form id="loginForm">
+        <input type="text" id="loginUsername" placeholder="Brugernavn" required>
+        <input type="password" id="loginPassword" placeholder="Adgangskode" required>
+        <button type="submit">Log ind</button>
+        <div class="error" id="loginError"></div>
+      </form>
+
+      <form id="registerForm" style="display:none">
+        <input type="text" id="regUsername" placeholder="Brugernavn" required>
+        <input type="password" id="regPassword" placeholder="Adgangskode" required>
+        <button type="submit">Opret konto</button>
+        <div class="error" id="regError"></div>
+      </form>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script>
+    // Redirect if already logged in
+    if (localStorage.getItem('token')) location.href = 'rooms.html';
+
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('loginForm').style.display = tab.dataset.tab === 'login' ? '' : 'none';
+        document.getElementById('registerForm').style.display = tab.dataset.tab === 'register' ? '' : 'none';
+      });
+    });
+
+    document.getElementById('loginForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const err = document.getElementById('loginError');
+      err.textContent = '';
+      try {
+        const res = await fetch(`${API_URL}/auth/token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: document.getElementById('loginUsername').value,
+            password: document.getElementById('loginPassword').value,
+          }),
+        });
+        if (!res.ok) throw new Error((await res.json()).detail);
+        const { access_token } = await res.json();
+        localStorage.setItem('token', access_token);
+        location.href = 'rooms.html';
+      } catch (e) {
+        err.textContent = e.message;
+      }
+    });
+
+    document.getElementById('registerForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const err = document.getElementById('regError');
+      err.textContent = '';
+      try {
+        const res = await fetch(`${API_URL}/auth/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: document.getElementById('regUsername').value,
+            password: document.getElementById('regPassword').value,
+          }),
+        });
+        if (!res.ok) throw new Error((await res.json()).detail);
+        err.style.color = 'var(--accent)';
+        err.textContent = 'Konto oprettet — log nu ind.';
+        document.querySelector('[data-tab="login"]').click();
+      } catch (e) {
+        err.textContent = e.message;
+      }
+    });
+  </script>
+</body>
+</html>

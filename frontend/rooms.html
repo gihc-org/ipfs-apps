@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chat — Rum</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    main { max-width: 640px; margin: 40px auto; padding: 0 16px; }
+    h2 { margin-bottom: 20px; }
+    .room-list { display: flex; flex-direction: column; gap: 10px; }
+    .room-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      cursor: pointer;
+      transition: border-color 0.15s;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .room-card:hover { border-color: var(--accent); }
+    .room-name { font-weight: 600; }
+    .new-room { display: flex; gap: 8px; margin-bottom: 24px; }
+    .new-room input { flex: 1; }
+    .new-room button { white-space: nowrap; }
+    .empty { color: var(--text-muted); text-align: center; padding: 40px; }
+  </style>
+</head>
+<body>
+  <nav>
+    <span class="brand">💬 Chat</span>
+    <span class="user" id="navUser"></span>
+    <button class="secondary" onclick="logout()" style="padding:6px 14px;font-size:13px">Log ud</button>
+  </nav>
+
+  <main>
+    <h2>Rum</h2>
+    <div class="new-room">
+      <input type="text" id="roomName" placeholder="Nyt rum...">
+      <button onclick="createRoom()">Opret</button>
+    </div>
+    <div class="error" id="createError" style="margin-bottom:12px"></div>
+    <div class="room-list" id="roomList"><div class="empty">Ingen rum endnu.</div></div>
+  </main>
+
+  <script src="config.js"></script>
+  <script>
+    const token = localStorage.getItem('token');
+    if (!token) location.href = 'index.html';
+
+    async function api(path, opts = {}) {
+      const res = await fetch(`${API_URL}${path}`, {
+        ...opts,
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...opts.headers },
+      });
+      if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+      return res.json();
+    }
+
+    async function init() {
+      const me = await api('/auth/me').catch(() => { location.href = 'index.html'; });
+      if (!me) return;
+      localStorage.setItem('username', me.username);
+      document.getElementById('navUser').textContent = me.username;
+      await loadRooms();
+    }
+
+    async function loadRooms() {
+      const rooms = await api('/rooms');
+      const list = document.getElementById('roomList');
+      if (!rooms.length) { list.innerHTML = '<div class="empty">Ingen rum endnu.</div>'; return; }
+      list.innerHTML = rooms.map(r => `
+        <div class="room-card" onclick="enterRoom('${r.id}','${encodeURIComponent(r.name)}')">
+          <span class="room-name"># ${r.name}</span>
+          <span style="color:var(--text-muted);font-size:12px">→</span>
+        </div>
+      `).join('');
+    }
+
+    async function createRoom() {
+      const name = document.getElementById('roomName').value.trim();
+      const err = document.getElementById('createError');
+      err.textContent = '';
+      if (!name) return;
+      try {
+        await api('/rooms', { method: 'POST', body: JSON.stringify({ name }) });
+        document.getElementById('roomName').value = '';
+        await loadRooms();
+      } catch (e) {
+        err.textContent = e.message;
+      }
+    }
+
+    document.getElementById('roomName').addEventListener('keydown', e => {
+      if (e.key === 'Enter') createRoom();
+    });
+
+    function enterRoom(id, name) {
+      location.href = `chat.html?room_id=${id}&room_name=${name}`;
+    }
+
+    function logout() {
+      localStorage.clear();
+      location.href = 'index.html';
+    }
+
+    init();
+  </script>
+</body>
+</html>

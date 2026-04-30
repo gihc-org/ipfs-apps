@@ -1,0 +1,12 @@
+# Lokal udvikling — bruges automatisk af `docker compose up`
+# I produktion: docker compose -f docker-compose.yml up
+services:
+  caddy:
+    volumes:
+      - ./caddy/Caddyfile.local:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  chat:
+    ports:
+      - "8001:8001"

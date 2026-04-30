@@ -1,0 +1,107 @@
+use axum::{
+    extract::{
+        ws::{Message, WebSocket, WebSocketUpgrade},
+        Path, Query, State,
+    },
+    http::StatusCode,
+    response::Response,
+    Json,
+};
+use futures::{SinkExt, StreamExt};
+use serde::Deserialize;
+use uuid::Uuid;
+
+use crate::{auth::decode_token, models::User, ws::get_or_create_sender, AppState};
+
+#[derive(Deserialize)]
+pub struct WsQuery {
+    token: String,
+}
+
+pub async fn handler(
+    State(state): State<AppState>,
+    Path(room_id): Path<Uuid>,
+    Query(query): Query<WsQuery>,
+    ws: WebSocketUpgrade,
+) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
+    let user_id = decode_token(&query.token, &state.config.jwt_secret)
+        .ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"detail": "Invalid token"}))))?;
+
+    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"detail": "Database error"}))))?
+        .ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"detail": "User not found"}))))?;
+
+    Ok(ws.on_upgrade(move |socket| handle_socket(socket, state, room_id, user)))
+}
+
+async fn handle_socket(socket: WebSocket, state: AppState, room_id: Uuid, user: User) {
+    let room_key = room_id.to_string();
+    let tx = get_or_create_sender(&state.rooms, &room_key).await;
+    let mut rx = tx.subscribe();
+
+    let (mut sender, mut receiver) = socket.split();
+
+    broadcast(&tx, "join", &user.username, None, None);
+
+    let mut send_task = tokio::spawn(async move {
+        while let Ok(msg) = rx.recv().await {
+            if sender.send(Message::Text(msg.into())).await.is_err() {
+                break;
+            }
+        }
+    });
+
+    let username = user.username.clone();
+    let db = state.db.clone();
+    let tx2 = tx.clone();
+    let mut recv_task = tokio::spawn(async move {
+        while let Some(Ok(Message::Text(text))) = receiver.next().await {
+            let Ok(data) = serde_json::from_str::<serde_json::Value>(&text) else {
+                continue;
+            };
+            let Some(content) = data["content"].as_str().map(str::trim).filter(|s| !s.is_empty()) else {
+                continue;
+            };
+
+            let Ok(msg) = sqlx::query_as::<_, crate::models::Message>(
+                "INSERT INTO messages (room_id, user_id, content) VALUES ($1, $2, $3) RETURNING *",
+            )
+            .bind(room_id)
+            .bind(user.id)
+            .bind(content)
+            .fetch_one(&db)
+            .await else {
+                continue;
+            };
+
+            broadcast(&tx2, "message", &username, Some(content), Some(msg.created_at));
+        }
+    });
+
+    tokio::select! {
+        _ = &mut send_task => recv_task.abort(),
+        _ = &mut recv_task => send_task.abort(),
+    }
+
+    broadcast(&tx, "leave", &user.username, None, None);
+}
+
+fn broadcast(
+    tx: &tokio::sync::broadcast::Sender<String>,
+    kind: &str,
+    user: &str,
+    content: Option<&str>,
+    created_at: Option<chrono::DateTime<chrono::Utc>>,
+) {
+    let mut msg = serde_json::json!({"type": kind, "user": user});
+    if let Some(c) = content {
+        msg["content"] = serde_json::Value::String(c.to_string());
+    }
+    if let Some(ts) = created_at {
+        msg["created_at"] = serde_json::Value::String(ts.to_rfc3339());
+    }
+    let _ = tx.send(msg.to_string());
+}
