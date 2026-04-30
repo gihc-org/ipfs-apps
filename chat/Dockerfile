@@ -4,13 +4,13 @@ WORKDIR /app
 
 # Cache dependencies
 COPY Cargo.toml Cargo.lock* ./
-RUN mkdir src && echo 'fn main() {}' > src/main.rs
+RUN mkdir src && echo 'fn main() {}' > src/main.rs && echo '' > src/lib.rs
 RUN cargo build --release && rm -rf src
 
 # Build application
 COPY src ./src
 COPY migrations ./migrations
-RUN touch src/main.rs && cargo build --release
+RUN touch src/main.rs src/lib.rs && cargo build --release
 
 FROM debian:bookworm-slim
 
