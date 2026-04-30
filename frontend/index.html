@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Chat — Log ind</title>
   <link rel="stylesheet" href="style.css">
-  <script src="https://challenges.cloudflare.com/turnstile/v1/api.js" async defer></script>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad" defer></script>
   <style>
     .container {
       max-width: 400px;
@@ -26,7 +26,7 @@
     .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
     form { display: flex; flex-direction: column; gap: 12px; }
     button[type=submit] { margin-top: 4px; }
-    .success { color: var(--accent); font-size: 14px; }
+    button[type=submit]:disabled { opacity: 0.5; cursor: not-allowed; }
     #verifiedBanner {
       background: #d1fae5;
       color: #065f46;
@@ -61,7 +61,7 @@
         <input type="email" id="regEmail" placeholder="Email" required>
         <input type="password" id="regPassword" placeholder="Adgangskode" required>
         <div id="turnstile-container"></div>
-        <button type="submit">Opret konto</button>
+        <button type="submit" id="regSubmit" disabled>Opret konto</button>
         <div class="error" id="regError"></div>
       </form>
     </div>
@@ -71,7 +71,6 @@
   <script>
     if (localStorage.getItem('token')) location.href = 'rooms.html';
 
-    // Show verified banner if redirected from email link
     if (new URLSearchParams(location.search).get('verified') === 'true') {
       document.getElementById('verifiedBanner').style.display = 'block';
       history.replaceState({}, '', location.pathname);
@@ -79,18 +78,38 @@
 
     let turnstileWidget = null;
 
+    function renderTurnstile() {
+      if (turnstileWidget !== null) return;
+      turnstileWidget = turnstile.render('#turnstile-container', {
+        sitekey: TURNSTILE_SITE_KEY,
+        theme: 'light',
+        callback: () => {
+          document.getElementById('regSubmit').disabled = false;
+        },
+        'expired-callback': () => {
+          document.getElementById('regSubmit').disabled = true;
+        },
+        'error-callback': () => {
+          document.getElementById('regSubmit').disabled = true;
+        },
+      });
+    }
+
+    // Called by Turnstile script when it finishes loading
+    function onTurnstileLoad() {
+      if (document.getElementById('registerForm').style.display !== 'none') {
+        renderTurnstile();
+      }
+    }
+
     function showTab(name) {
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       document.querySelector(`[data-tab="${name}"]`).classList.add('active');
       document.getElementById('loginForm').style.display = name === 'login' ? '' : 'none';
       document.getElementById('registerForm').style.display = name === 'register' ? '' : 'none';
 
-      // Render Turnstile widget the first time the register tab is shown
-      if (name === 'register' && turnstileWidget === null && typeof turnstile !== 'undefined') {
-        turnstileWidget = turnstile.render('#turnstile-container', {
-          sitekey: TURNSTILE_SITE_KEY,
-          theme: 'light',
-        });
+      if (name === 'register' && typeof turnstile !== 'undefined') {
+        renderTurnstile();
       }
     }
 
@@ -127,9 +146,7 @@
       errEl.textContent = '';
       errEl.style.color = '';
 
-      const turnstileToken = typeof turnstile !== 'undefined' && turnstileWidget !== null
-        ? turnstile.getResponse(turnstileWidget)
-        : '';
+      const turnstileToken = turnstileWidget !== null ? turnstile.getResponse(turnstileWidget) : '';
 
       try {
         const res = await fetch(`${API_URL}/auth/register`, {
@@ -146,10 +163,12 @@
         if (!res.ok) throw new Error(data.detail);
         errEl.style.color = 'var(--accent)';
         errEl.textContent = data.message;
-        if (turnstileWidget !== null) turnstile.reset(turnstileWidget);
+        turnstile.reset(turnstileWidget);
+        document.getElementById('regSubmit').disabled = true;
       } catch (e) {
         errEl.textContent = e.message;
-        if (turnstileWidget !== null) turnstile.reset(turnstileWidget);
+        turnstile.reset(turnstileWidget);
+        document.getElementById('regSubmit').disabled = true;
       }
     });
   </script>
