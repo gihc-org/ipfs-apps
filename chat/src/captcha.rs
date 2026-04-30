@@ -16,7 +16,7 @@ pub async fn verify(client: &reqwest::Client, secret: &str, token: &str) -> bool
         return true;
     }
     let resp = client
-        .post("https://challenges.cloudflare.com/turnstile/v1/siteverify")
+        .post("https://challenges.cloudflare.com/turnstile/v0/siteverify")
         .form(&[("secret", secret), ("response", token)])
         .send()
         .await;
