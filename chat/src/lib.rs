@@ -1,5 +1,7 @@
 pub mod auth;
+pub mod captcha;
 pub mod config;
+pub mod email;
 pub mod models;
 pub mod routes;
 pub mod ws;
@@ -18,6 +20,7 @@ pub use ws::RoomMap;
 /// Shared state injected into every Axum handler via `State<AppState>`.
 ///
 /// `db` is a connection pool — cloning it is cheap (Arc under the hood).
+/// `http` is a shared reqwest client for external API calls (Turnstile, Resend).
 /// `rooms` holds in-memory broadcast channels keyed by room UUID string;
 /// restarting the server drops all active WebSocket connections.
 #[derive(Clone)]
@@ -25,6 +28,7 @@ pub struct AppState {
     pub db: PgPool,
     pub config: Config,
     pub rooms: RoomMap,
+    pub http: reqwest::Client,
 }
 
 /// Builds the Axum router with all routes, CORS middleware, and shared state.
@@ -35,6 +39,7 @@ pub fn build_app(state: AppState) -> Router {
         .route("/auth/register", post(routes::auth::register))
         .route("/auth/token", post(routes::auth::login))
         .route("/auth/me", get(routes::auth::me))
+        .route("/auth/verify", get(routes::auth::verify))
         .route("/rooms", get(routes::rooms::list).post(routes::rooms::create))
         .route("/rooms/:id/messages", get(routes::rooms::messages))
         .route("/ws/:room_id", get(routes::chat::handler))

@@ -10,8 +10,6 @@ async fn main() {
         .await
         .expect("Failed to connect to database");
 
-    // Migrations are embedded at compile time via sqlx::migrate! and run on
-    // every startup — safe to repeat because each migration is idempotent.
     sqlx::migrate!("./migrations")
         .run(&db)
         .await
@@ -20,7 +18,8 @@ async fn main() {
     let rooms: RoomMap =
         std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()));
 
-    let state = AppState { db, config, rooms };
+    let http = reqwest::Client::new();
+    let state = AppState { db, config, rooms, http };
     let app = build_app(state);
 
     let addr = "0.0.0.0:8001";

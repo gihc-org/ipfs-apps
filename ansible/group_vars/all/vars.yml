@@ -4,3 +4,6 @@ postgres_db: chatdb
 postgres_user: chatuser
 allowed_origin: "https://app.gihc.online"
 project_dir: /opt/chat
+base_url: "https://api.gihc.online"
+frontend_url: "https://app.gihc.online"
+resend_from: "noreply@gihc.online"

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Chat — Log ind</title>
   <link rel="stylesheet" href="style.css">
+  <script src="https://challenges.cloudflare.com/turnstile/v1/api.js" async defer></script>
   <style>
     .container {
       max-width: 400px;
@@ -25,11 +26,23 @@
     .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
     form { display: flex; flex-direction: column; gap: 12px; }
     button[type=submit] { margin-top: 4px; }
+    .success { color: var(--accent); font-size: 14px; }
+    #verifiedBanner {
+      background: #d1fae5;
+      color: #065f46;
+      border: 1px solid #6ee7b7;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      font-size: 14px;
+      display: none;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>💬 Chat</h1>
+    <div id="verifiedBanner">✅ Email bekræftet! Du kan nu logge ind.</div>
     <div class="card">
       <div class="tabs">
         <div class="tab active" data-tab="login">Log ind</div>
@@ -45,7 +58,9 @@
 
       <form id="registerForm" style="display:none">
         <input type="text" id="regUsername" placeholder="Brugernavn" required>
+        <input type="email" id="regEmail" placeholder="Email" required>
         <input type="password" id="regPassword" placeholder="Adgangskode" required>
+        <div id="turnstile-container"></div>
         <button type="submit">Opret konto</button>
         <div class="error" id="regError"></div>
       </form>
@@ -54,22 +69,40 @@
 
   <script src="config.js"></script>
   <script>
-    // Redirect if already logged in
     if (localStorage.getItem('token')) location.href = 'rooms.html';
 
+    // Show verified banner if redirected from email link
+    if (new URLSearchParams(location.search).get('verified') === 'true') {
+      document.getElementById('verifiedBanner').style.display = 'block';
+      history.replaceState({}, '', location.pathname);
+    }
+
+    let turnstileWidget = null;
+
+    function showTab(name) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelector(`[data-tab="${name}"]`).classList.add('active');
+      document.getElementById('loginForm').style.display = name === 'login' ? '' : 'none';
+      document.getElementById('registerForm').style.display = name === 'register' ? '' : 'none';
+
+      // Render Turnstile widget the first time the register tab is shown
+      if (name === 'register' && turnstileWidget === null && typeof turnstile !== 'undefined') {
+        turnstileWidget = turnstile.render('#turnstile-container', {
+          sitekey: TURNSTILE_SITE_KEY,
+          theme: 'light',
+        });
+      }
+    }
+
     document.querySelectorAll('.tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
-        document.getElementById('loginForm').style.display = tab.dataset.tab === 'login' ? '' : 'none';
-        document.getElementById('registerForm').style.display = tab.dataset.tab === 'register' ? '' : 'none';
-      });
+      tab.addEventListener('click', () => showTab(tab.dataset.tab));
     });
 
     document.getElementById('loginForm').addEventListener('submit', async e => {
       e.preventDefault();
-      const err = document.getElementById('loginError');
-      err.textContent = '';
+      const errEl = document.getElementById('loginError');
+      errEl.textContent = '';
+      errEl.style.color = '';
       try {
         const res = await fetch(`${API_URL}/auth/token`, {
           method: 'POST',
@@ -79,34 +112,44 @@
             password: document.getElementById('loginPassword').value,
           }),
         });
-        if (!res.ok) throw new Error((await res.json()).detail);
-        const { access_token } = await res.json();
-        localStorage.setItem('token', access_token);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail);
+        localStorage.setItem('token', data.access_token);
         location.href = 'rooms.html';
       } catch (e) {
-        err.textContent = e.message;
+        errEl.textContent = e.message;
       }
     });
 
     document.getElementById('registerForm').addEventListener('submit', async e => {
       e.preventDefault();
-      const err = document.getElementById('regError');
-      err.textContent = '';
+      const errEl = document.getElementById('regError');
+      errEl.textContent = '';
+      errEl.style.color = '';
+
+      const turnstileToken = typeof turnstile !== 'undefined' && turnstileWidget !== null
+        ? turnstile.getResponse(turnstileWidget)
+        : '';
+
       try {
         const res = await fetch(`${API_URL}/auth/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             username: document.getElementById('regUsername').value,
+            email: document.getElementById('regEmail').value,
             password: document.getElementById('regPassword').value,
+            turnstile_token: turnstileToken,
           }),
         });
-        if (!res.ok) throw new Error((await res.json()).detail);
-        err.style.color = 'var(--accent)';
-        err.textContent = 'Konto oprettet — log nu ind.';
-        document.querySelector('[data-tab="login"]').click();
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail);
+        errEl.style.color = 'var(--accent)';
+        errEl.textContent = data.message;
+        if (turnstileWidget !== null) turnstile.reset(turnstileWidget);
       } catch (e) {
-        err.textContent = e.message;
+        errEl.textContent = e.message;
+        if (turnstileWidget !== null) turnstile.reset(turnstileWidget);
       }
     });
   </script>

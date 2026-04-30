@@ -4,14 +4,18 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use uuid::Uuid;
 
-/// A registered user. `password_hash` is excluded from JSON serialization so
-/// it can never accidentally appear in an API response.
+/// A registered user. `password_hash` and `verification_token` are excluded
+/// from JSON serialization so they can never appear in an API response.
 #[derive(sqlx::FromRow, Serialize, Clone)]
 pub struct User {
     pub id: Uuid,
     pub username: String,
     #[serde(skip)]
     pub password_hash: String,
+    pub email: Option<String>,
+    pub email_verified: bool,
+    #[serde(skip)]
+    pub verification_token: Option<Uuid>,
     pub created_at: DateTime<Utc>,
 }
 

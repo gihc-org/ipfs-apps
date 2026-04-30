@@ -15,6 +15,25 @@ pub struct Config {
     /// `"*"` allows all origins (local dev). Any other value is used verbatim
     /// as the `Access-Control-Allow-Origin` header value.
     pub allowed_origin: String,
+
+    /// Cloudflare Turnstile server-side secret. Empty string skips validation
+    /// (local dev). Get yours at dash.cloudflare.com → Turnstile.
+    pub turnstile_secret: String,
+
+    /// Resend API key for sending verification emails. Empty string skips
+    /// sending and logs the verify URL instead (local dev).
+    pub resend_api_key: String,
+
+    /// From-address used in outgoing emails, e.g. `noreply@gihc.online`.
+    pub resend_from: String,
+
+    /// The backend's own public URL, used to build email verification links.
+    /// E.g. `https://api.gihc.online`.
+    pub base_url: String,
+
+    /// The frontend's public URL, used as redirect target after email
+    /// verification. E.g. `https://app.gihc.online`.
+    pub frontend_url: String,
 }
 
 impl Config {
@@ -27,6 +46,14 @@ impl Config {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(24),
             allowed_origin: std::env::var("ALLOWED_ORIGIN").unwrap_or_else(|_| "*".into()),
+            turnstile_secret: std::env::var("TURNSTILE_SECRET").unwrap_or_default(),
+            resend_api_key: std::env::var("RESEND_API_KEY").unwrap_or_default(),
+            resend_from: std::env::var("RESEND_FROM")
+                .unwrap_or_else(|_| "noreply@example.com".into()),
+            base_url: std::env::var("BASE_URL")
+                .unwrap_or_else(|_| "http://localhost:8001".into()),
+            frontend_url: std::env::var("FRONTEND_URL")
+                .unwrap_or_else(|_| "http://localhost:8001".into()),
         }
     }
 }
