@@ -85,4 +85,4 @@
 
     - name: Show IPFS CID
       ansible.builtin.debug:
-        msg: "Frontend CID: {{ ipfs_cid.stdout }} — opdater _dnslink.app.{{ domain }} til: dnslink=/ipfs/{{ ipfs_cid.stdout }}"
+        msg: "Frontend CID: {{ ipfs_cid.stdout }} — opdater _dnslink.{{ frontend_domain }} til: dnslink=/ipfs/{{ ipfs_cid.stdout }}"

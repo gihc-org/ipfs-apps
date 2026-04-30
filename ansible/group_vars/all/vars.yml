@@ -2,8 +2,9 @@ domain: gihc.online
 acme_email: kristian.n.jensen@gmail.com
 postgres_db: chatdb
 postgres_user: chatuser
-allowed_origin: "https://app.gihc.online"
+frontend_domain: "chat.apps.gihc.online"
+allowed_origin: "https://chat.apps.gihc.online"
 project_dir: /opt/chat
 base_url: "https://api.gihc.online"
-frontend_url: "https://app.gihc.online"
+frontend_url: "https://chat.apps.gihc.online"
 resend_from: "noreply@gihc.online"
