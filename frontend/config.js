@@ -1,3 +1,3 @@
-// Opdater disse før du deployer til IPFS
-const API_URL = 'https://api.example.com';
-const WS_URL  = 'wss://api.example.com';
+// Lokal udvikling — opdater til dit domæne før deploy til IPFS
+const API_URL = 'http://localhost:8001';
+const WS_URL  = 'ws://localhost:8001';
