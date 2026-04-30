@@ -20,7 +20,7 @@ docker-compose.yml Full stack definition
 ### Architecture
 
 ```
-IPFS frontend (DNSLink → app.gihc.online)
+IPFS frontend (DNSLink → chat.apps.gihc.online)
     │
     └── api.gihc.online  →  Caddy  →  chat:8001 (Axum, Rust)
                                            │
@@ -32,6 +32,9 @@ IPFS frontend (DNSLink → app.gihc.online)
 - **Framework:** Axum 0.7 with `ws` feature
 - **Database:** SQLx 0.8 + PostgreSQL (runtime API, not compile-time `query!` macro)
 - **Auth:** Argon2id password hashing, JWT via `jsonwebtoken` (HS256)
+- **Email verification:** Required before login — Resend API sends a link to `GET /auth/verify?token=<uuid>`
+- **CAPTCHA:** Cloudflare Turnstile on registration — `chat/src/captcha.rs` validates against `https://challenges.cloudflare.com/turnstile/v0/siteverify` (v0, not v1)
+- **External HTTP:** `reqwest 0.12` with `rustls-tls` feature — client stored in `AppState.http`
 - **WebSocket:** one `tokio::sync::broadcast` channel per room, stored in `AppState.rooms: RoomMap`
 - **Migrations:** `sqlx::migrate!("./migrations")` — embedded at compile time, run on startup
 - **CORS:** `tower_http::cors::CorsLayer`, configured via `ALLOWED_ORIGIN` env var
@@ -41,12 +44,25 @@ IPFS frontend (DNSLink → app.gihc.online)
 
 `chat/src/lib.rs` is the library root — it owns all module declarations and exports `AppState`, `Config`, `RoomMap`, `build_app`, and `build_cors`. `src/main.rs` is a thin binary entrypoint that calls into the lib. This split lets integration tests import the crate.
 
+#### Modules
+
+| Module | Purpose |
+|--------|---------|
+| `auth` | JWT creation/validation, Argon2id hashing, `authenticate()` helper |
+| `captcha` | Turnstile token validation (skipped if `TURNSTILE_SECRET` is empty) |
+| `email` | Resend API wrapper for verification emails (skipped if `RESEND_API_KEY` is empty) |
+| `models` | `User` struct with email verification fields |
+| `routes/auth` | register, login, me, verify handlers |
+| `routes/rooms` | room list and creation |
+| `ws` | WebSocket handler |
+
 #### API surface
 | Method | Path | Auth |
 |--------|------|------|
 | POST | /auth/register | — |
 | POST | /auth/token | — |
 | GET | /auth/me | Bearer |
+| GET | /auth/verify?token=\<uuid\> | — |
 | GET | /rooms | Bearer |
 | POST | /rooms | Bearer |
 | GET | /rooms/:id/messages | Bearer |
@@ -56,6 +72,19 @@ IPFS frontend (DNSLink → app.gihc.online)
 `auth::authenticate(&state, &headers).await?` validates the Bearer token and returns the `User`. Call it at the top of any handler that requires authentication.
 
 The WebSocket handler uses a query param (`?token=<jwt>`) instead of a header because the browser WebSocket API cannot set custom headers on the upgrade request.
+
+#### Environment variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `DATABASE_URL` | required | PostgreSQL connection string |
+| `JWT_SECRET` | required | HMAC key for JWT signing |
+| `ALLOWED_ORIGIN` | `*` | CORS allowed origin |
+| `TURNSTILE_SECRET` | `` | Cloudflare Turnstile secret key (empty = skip CAPTCHA) |
+| `RESEND_API_KEY` | `` | Resend email API key (empty = auto-verify accounts) |
+| `RESEND_FROM` | `noreply@example.com` | Sender address for verification emails |
+| `BASE_URL` | `http://localhost:8001` | Public URL of the API (used in email links) |
+| `FRONTEND_URL` | `http://localhost:8001` | Public URL of the frontend (used in redirect after email verify) |
 
 #### Tests
 
@@ -76,9 +105,11 @@ Three pages: `index.html` (login/register), `rooms.html` (room list), `chat.html
 
 `config.js` indeholder produktions-URL'erne (`api.gihc.online`). Til lokal udvikling skiftes til `http://localhost:8001` og `ws://localhost:8001`.
 
+Turnstile widget bruger `https://challenges.cloudflare.com/turnstile/v0/api.js` (v0). Submit-knappen er disabled indtil Turnstile `callback` fyrer — undgår race condition ved async script-load.
+
 ### Ansible (`ansible/`)
 
-Provisioner og deployer backend til VPS (65.109.233.92).
+Provisioner og deployer backend til VPS (65.109.233.92). Deploy er fuldt automatiseret — inkl. IPFS-upload og DNS-opdatering hos Simply.com.
 
 ```bash
 # Første gang
@@ -88,10 +119,19 @@ ansible-galaxy collection install -r ansible/requirements.yml
 ansible-playbook ansible/playbook.yml -i ansible/inventory.yml --ask-vault-pass
 ```
 
-- `group_vars/all/vars.yml` — ikke-hemmelige variable (domæne, e-mail osv.)
-- `group_vars/all/vault.yml` — krypterede hemmeligheder (postgres password, JWT secret)
+Playbook'en:
+1. Synkroniserer projektet til VPS
+2. Bygger og starter Docker Compose-services
+3. Uploader `frontend/` til IPFS og gemmer CID
+4. Kalder Simply.com API og opdaterer `_dnslink.chat.apps.gihc.online` automatisk
+
+- `group_vars/all/vars.yml` — ikke-hemmelige variable (domæne, e-mail, simply_account osv.)
+- `group_vars/all/vault.yml` — krypterede hemmeligheder: `vault_postgres_password`, `vault_jwt_secret`, `vault_turnstile_secret`, `vault_resend_api_key`, `vault_simply_account`, `vault_simply_api_key`
 - `templates/Caddyfile.j2` — Caddyfile renderet med domæne (Caddy understøtter ikke `{env.VAR}` i site-adresser)
 - `templates/env.j2` — `.env` fil til Docker Compose
+
+#### Simply.com DNS API
+Simply.com eksponerer en REST API på `https://api.simply.com/2/` med HTTP Basic Auth (kontonummer + API-nøgle). Playbook'en bruger `uri`-modulet til at GET records, finde den eksisterende `_dnslink`-record og PUT den nye CID. Credentials hentes fra vault (`vault_simply_account`, `vault_simply_api_key`).
 
 ## Running locally
 
@@ -112,11 +152,11 @@ Rust-imaget bruger two-stage build (`rust:1-slim` builder, `debian:bookworm-slim
 
 ### Deploying frontend til IPFS
 
+Sker automatisk via Ansible-playbook. Manuelt ved lokal test:
+
 ```bash
-# Opdater config.js til produktions-URL'er
 ipfs add -r frontend/
-# Opdater TXT-posten _dnslink.app.gihc.online hos simply.com:
-# dnslink=/ipfs/<nyt CID>
+# DNS opdateres nu automatisk af playbook'en via Simply.com API
 ```
 
 ## Key decisions
@@ -129,3 +169,6 @@ ipfs add -r frontend/
 - **rustls over native-tls:** no `libssl-dev` or `pkg-config` needed to compile — simpler Dockerfile and local dev setup
 - **lib + bin split:** `src/lib.rs` exports the router and state so integration tests can import the crate without duplicating setup
 - **`authenticate` as plain async fn:** Rust 1.88 tightened lifetime rules for async fns in traits, breaking the `FromRequestParts` extractor approach
+- **Turnstile v0 URL:** Cloudflare Turnstile uses `/v0/` paths for both `api.js` and `siteverify` — `/v1/` returnerer 404/405 og fejler lydløst
+- **`reqwest` without `form` feature:** reqwest 0.12 removed the `form` feature flag — `.form()` metoden er altid tilgængelig uden at angive den
+- **Simply.com API for DNS:** Ansible `uri`-modul kalder Simply.com REST API direkte — ingen ekstern Terraform-provider eller Ansible-collection nødvendig
