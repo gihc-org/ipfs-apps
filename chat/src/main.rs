@@ -22,7 +22,7 @@ async fn main() {
     let state = AppState { db, config, rooms, http };
     let app = build_app(state);
 
-    let addr = "0.0.0.0:8001";
+    let addr = "0.0.0.0:8080";
     tracing::info!("Listening on {addr}");
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
