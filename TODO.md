@@ -54,3 +54,43 @@ Se `OWASP-IMPROVEMENTS.md` for detaljer og kodeeksempler.
 - [ ] Sikkerhedslogning med `tracing::warn!` på auth-hændelser
 - [ ] JWT i `httpOnly`-cookie frem for `localStorage`
 - [ ] `email`-felt NOT NULL i database
+
+---
+
+## GDPR-compliance
+
+Projektet gemmer persondata (email, brugernavn) på EU-borgere. Se ADR-0014.
+
+- [ ] `DELETE /auth/me` — ret til sletning (slet bruger + tilknyttede beskeder)
+- [ ] `GET /auth/me` — udvid til at returnere alle gemte felter (ret til indsigt)
+- [ ] Tilføj privacy policy-side til frontend med oplysning om hvad der gemmes og hvorfor
+- [ ] Dokumentér dataopbevaring: hvor længe gemmes beskeder og konti?
+- [ ] Bekræft at PostgreSQL-data ikke replikeres til tredjelande (check VPS-lokation)
+- [ ] Verifikationstoken er persondata — sørg for at det slettes ved verify og ved sletning af konto
+
+---
+
+## CIS Docker Benchmark
+
+Hærdning af Docker-opsætning. Se ADR-0014.
+
+- [ ] Kør backend-container som non-root bruger — tilføj til `chat/Dockerfile`:
+  ```dockerfile
+  RUN useradd -m appuser
+  USER appuser
+  ```
+- [ ] Tilføj resource limits i `docker-compose.yml`:
+  ```yaml
+  deploy:
+    resources:
+      limits:
+        memory: 256m
+        cpus: "0.5"
+  ```
+- [ ] Sæt `read_only: true` på containere der ikke skriver til filsystem (chat)
+- [ ] Sæt `no-new-privileges: true` på alle services:
+  ```yaml
+  security_opt:
+    - no-new-privileges:true
+  ```
+- [ ] Kør `docker scout cves` eller `trivy image` mod bygget image efter deploy
