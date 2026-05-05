@@ -46,10 +46,13 @@ pub async fn list_users(
             .fetch_all(&state.db)
             .await
         } else {
+            // ILIKE pattern: % wildcards are safe here because we're using parameterized queries.
+            // The user input is bound as a parameter, not concatenated into SQL.
+            let pattern = format!("%{}%", trimmed);
             sqlx::query_as::<_, User>(
                 "SELECT * FROM users WHERE username ILIKE $1 AND id != $2 ORDER BY username LIMIT 20",
             )
-            .bind(format!("%{}%", trimmed))
+            .bind(pattern)
             .bind(current_user.id)
             .fetch_all(&state.db)
             .await
@@ -88,7 +91,7 @@ pub async fn create_or_get_dm(
     if current_user.id == body.user_id {
         return Err(err(
             StatusCode::BAD_REQUEST,
-            "Kan ikke sende en direkte besked til dig selv",
+            "Du kan ikke sende en direkte besked til dig selv",
         ));
     }
 
@@ -97,7 +100,7 @@ pub async fn create_or_get_dm(
         .fetch_optional(&state.db)
         .await
         .map_err(|_| err(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
-        .ok_or_else(|| err(StatusCode::NOT_FOUND, "Bruger ikke fundet"))?;
+        .ok_or_else(|| err(StatusCode::NOT_FOUND, "Brugeren blev ikke fundet"))?;
 
     // Deterministic room name: sort UUIDs so order is always stable
     let (id1, id2) = if current_user.id.to_string() < other_user.id.to_string() {
@@ -107,7 +110,9 @@ pub async fn create_or_get_dm(
     };
     let dm_name = format!("dm:{}:{}", id1, id2);
 
-    // Optimistic fast path
+    // Optimistic fast path: check if room already exists before attempting INSERT.
+    // This avoids the overhead of INSERT + ON CONFLICT in the common case where
+    // the DM conversation already exists.
     if let Some(row) = sqlx::query("SELECT id FROM rooms WHERE name = $1")
         .bind(&dm_name)
         .fetch_optional(&state.db)
@@ -121,7 +126,10 @@ pub async fn create_or_get_dm(
         }))));
     }
 
-    // Slow path: INSERT with ON CONFLICT to handle race
+    // Slow path: INSERT with ON CONFLICT to handle concurrent creation.
+    // If another request creates the room between our check and this INSERT,
+    // the UNIQUE constraint on rooms.name causes ON CONFLICT DO NOTHING to fire,
+    // and we fall through to the final SELECT below.
     let room = sqlx::query_as::<_, Room>(
         "INSERT INTO rooms (name, is_dm) VALUES ($1, TRUE)
          ON CONFLICT (name) DO NOTHING RETURNING *",
@@ -146,14 +154,22 @@ pub async fn create_or_get_dm(
         .map_err(|_| err(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
         rid
     } else {
-        // Lost the race — another request created the room
+        // Lost the race — another request created the room between our check and INSERT.
+        // This SELECT should always succeed because the other request's INSERT committed.
         let row = sqlx::query("SELECT id FROM rooms WHERE name = $1")
             .bind(&dm_name)
             .fetch_one(&state.db)
             .await
-            .map_err(|_| err(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+            .map_err(|_| err(StatusCode::INTERNAL_SERVER_ERROR, "Kunne ikke hente DM-rum"))?;
         row.get("id")
     };
+
+    tracing::info!(
+        user_id = %current_user.id,
+        other_user_id = %other_user.id,
+        room_id = %room_id,
+        "DM conversation created or accessed"
+    );
 
     Ok((StatusCode::OK, Json(serde_json::json!({
         "room_id": room_id,
