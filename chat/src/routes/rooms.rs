@@ -48,8 +48,13 @@ pub async fn create(
 ) -> Result<(StatusCode, Json<Room>), ApiError> {
     authenticate(&state, &headers).await?;
 
+    let name = body.name.trim();
+    if name.is_empty() || name.len() > 100 {
+        return Err(err(StatusCode::BAD_REQUEST, "Rum-navn skal være 1–100 tegn"));
+    }
+
     let existing = sqlx::query("SELECT id FROM rooms WHERE name = $1")
-        .bind(&body.name)
+        .bind(name)
         .fetch_optional(&state.db)
         .await
         .map_err(|_| err(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
@@ -59,7 +64,7 @@ pub async fn create(
     }
 
     let room = sqlx::query_as::<_, Room>("INSERT INTO rooms (name) VALUES ($1) RETURNING *")
-        .bind(&body.name)
+        .bind(name)
         .fetch_one(&state.db)
         .await
         .map_err(|_| err(StatusCode::INTERNAL_SERVER_ERROR, "Failed to create room"))?;

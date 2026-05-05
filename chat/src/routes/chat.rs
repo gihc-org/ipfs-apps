@@ -73,7 +73,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, room_id: Uuid, user: 
             let Ok(data) = serde_json::from_str::<serde_json::Value>(&text) else {
                 continue;
             };
-            let Some(content) = data["content"].as_str().map(str::trim).filter(|s| !s.is_empty()) else {
+            let Some(content) = data["content"].as_str().map(str::trim).filter(|s| !s.is_empty() && s.len() <= 4000) else {
                 continue;
             };
 

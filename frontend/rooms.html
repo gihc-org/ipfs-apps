@@ -67,13 +67,17 @@
       await loadRooms();
     }
 
+    function escapeHtml(str) {
+      return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
     async function loadRooms() {
       const rooms = await api('/rooms');
       const list = document.getElementById('roomList');
       if (!rooms.length) { list.innerHTML = '<div class="empty">Ingen rum endnu.</div>'; return; }
       list.innerHTML = rooms.map(r => `
         <div class="room-card" onclick="enterRoom('${r.id}','${encodeURIComponent(r.name)}')">
-          <span class="room-name"># ${r.name}</span>
+          <span class="room-name"># ${escapeHtml(r.name)}</span>
           <span style="color:var(--text-muted);font-size:12px">→</span>
         </div>
       `).join('');

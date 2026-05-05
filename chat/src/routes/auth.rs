@@ -58,12 +58,23 @@ pub async fn register(
     State(state): State<AppState>,
     Json(body): Json<RegisterRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
-    // 1. Validate CAPTCHA
+    // 1. Input length validation — enforce limits before any DB or external calls
+    if body.username.len() < 2 || body.username.len() > 50 {
+        return Err(err(StatusCode::BAD_REQUEST, "Brugernavn skal være 2–50 tegn"));
+    }
+    if body.password.len() < 8 || body.password.len() > 128 {
+        return Err(err(StatusCode::BAD_REQUEST, "Adgangskode skal være 8–128 tegn"));
+    }
+    if body.email.len() > 254 {
+        return Err(err(StatusCode::BAD_REQUEST, "Email er for lang"));
+    }
+
+    // 2. Validate CAPTCHA
     if !captcha::verify(&state.http, &state.config.turnstile_secret, &body.turnstile_token).await {
         return Err(err(StatusCode::BAD_REQUEST, "CAPTCHA-validering fejlede"));
     }
 
-    // 2. Check username uniqueness
+    // 3. Check username uniqueness
     if sqlx::query("SELECT id FROM users WHERE username = $1")
         .bind(&body.username)
         .fetch_optional(&state.db)
@@ -74,7 +85,7 @@ pub async fn register(
         return Err(err(StatusCode::BAD_REQUEST, "Brugernavnet er allerede taget"));
     }
 
-    // 3. Check email uniqueness
+    // 4. Check email uniqueness — generic message to avoid leaking whether the email is registered
     if sqlx::query("SELECT id FROM users WHERE email = $1")
         .bind(&body.email)
         .fetch_optional(&state.db)
@@ -82,7 +93,7 @@ pub async fn register(
         .map_err(|_| err(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
         .is_some()
     {
-        return Err(err(StatusCode::BAD_REQUEST, "Email-adressen er allerede i brug"));
+        return Err(err(StatusCode::BAD_REQUEST, "Kunne ikke oprette konto med disse oplysninger"));
     }
 
     // 4. In local dev (no API key), auto-verify so the account is immediately usable

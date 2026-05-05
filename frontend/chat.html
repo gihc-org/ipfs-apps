@@ -98,7 +98,7 @@
         div.className = 'msg' + (user === username ? ' own' : '');
         const time = created_at ? new Date(created_at).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' }) : '';
         div.innerHTML = `
-          <div class="meta"><span class="author">${user}</span> ${time}</div>
+          <div class="meta"><span class="author">${escapeHtml(user)}</span> ${escapeHtml(time)}</div>
           <div class="bubble">${escapeHtml(content)}</div>
         `;
         messagesEl.appendChild(div);
