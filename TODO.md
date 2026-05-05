@@ -47,11 +47,11 @@ anbefaling i `OWASP-IMPROVEMENTS.md`.
 
 Se `OWASP-IMPROVEMENTS.md` for detaljer og kodeeksempler.
 
-- [ ] Rate limiting på `/auth/token` og `/auth/register` (`tower_governor`)
+- [ ] Rate limiting på `/auth/token`, `/auth/register`, og `/dms` POST (`tower_governor`)
 - [ ] JWT-token revokering ved logout
 - [ ] Verifikationstoken udløber efter 48 timer
 - [ ] Account lockout efter gentagne fejlede loginforsøg
-- [ ] Sikkerhedslogning med `tracing::warn!` på auth-hændelser
+- [ ] Sikkerhedslogning med `tracing::warn!` på auth-hændelser (✅ delvist implementeret for DM-adgang)
 - [ ] JWT i `httpOnly`-cookie frem for `localStorage`
 - [ ] `email`-felt NOT NULL i database
 

@@ -46,8 +46,11 @@ pub async fn list_users(
             .fetch_all(&state.db)
             .await
         } else {
-            // ILIKE pattern: % wildcards are safe here because we're using parameterized queries.
-            // The user input is bound as a parameter, not concatenated into SQL.
+            // ILIKE pattern construction: The % wildcards are safe here because:
+            // 1. The user input (trimmed) is bound as a parameter ($1), not concatenated into SQL
+            // 2. format!() only constructs the pattern string, which is then passed to bind()
+            // 3. SQLx escapes the parameter value, preventing SQL injection
+            // Example: user input "bob" becomes pattern "%bob%" bound to $1
             let pattern = format!("%{}%", trimmed);
             sqlx::query_as::<_, User>(
                 "SELECT * FROM users WHERE username ILIKE $1 AND id != $2 ORDER BY username LIMIT 20",

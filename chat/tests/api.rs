@@ -479,3 +479,40 @@ async fn member_can_read_dm_messages(pool: PgPool) {
     assert_eq!(status, StatusCode::OK);
     assert!(body.is_array());
 }
+
+#[sqlx::test(migrations = "./migrations")]
+async fn concurrent_dm_creation_yields_same_room(pool: PgPool) {
+    let app = build_app(test_state(pool));
+    let token_a = register_and_login(&app, "alice", "pw").await;
+    let token_b = register_and_login(&app, "bob", "pw").await;
+    
+    let (_, user_a) = api(&app, "GET", "/auth/me", Some(&token_a), None).await;
+    let (_, user_b) = api(&app, "GET", "/auth/me", Some(&token_b), None).await;
+    let alice_id = user_a["id"].as_str().unwrap();
+    let bob_id = user_b["id"].as_str().unwrap();
+
+    // Simulate concurrent DM creation: both users create DM with each other simultaneously
+    let app_clone = app.clone();
+    let token_a_clone = token_a.clone();
+    let token_b_clone = token_b.clone();
+    let bob_id_clone = bob_id.to_string();
+    let alice_id_clone = alice_id.to_string();
+
+    let (dm1, dm2) = tokio::join!(
+        async {
+            api(&app, "POST", "/dms", Some(&token_a_clone),
+                Some(json!({"user_id": bob_id_clone}))).await
+        },
+        async {
+            api(&app_clone, "POST", "/dms", Some(&token_b_clone),
+                Some(json!({"user_id": alice_id_clone}))).await
+        }
+    );
+
+    // Both requests should succeed and return the same room_id
+    let (status1, body1) = dm1;
+    let (status2, body2) = dm2;
+    assert_eq!(status1, StatusCode::OK);
+    assert_eq!(status2, StatusCode::OK);
+    assert_eq!(body1["room_id"], body2["room_id"]);
+}
