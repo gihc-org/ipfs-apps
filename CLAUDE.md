@@ -161,22 +161,25 @@ ipfs add -r frontend/
 
 ## Key decisions
 
-Arkitektoniske beslutninger er dokumenteret som ADR'er i `~/projects/adr/`. Listen nedenfor viser hvilke ADR'er dette projekt følger:
+Arkitektoniske beslutninger er dokumenteret som ADR'er i `~/projects/adrs/`. Listen nedenfor viser hvilke ADR'er dette projekt følger:
 
 | ADR | Beslutning |
 |-----|------------|
-| [001](~/projects/adr/001-axum-web-framework.md) | Axum over Actix-web |
-| [002](~/projects/adr/002-rustls-over-native-tls.md) | rustls over native-tls |
-| [003](~/projects/adr/003-rust-lib-bin-split.md) | lib + bin split til integration tests |
-| [004](~/projects/adr/004-sqlx-runtime-api.md) | SQLx runtime API over compile-time macros |
-| [005](~/projects/adr/005-argon2id-jwt-auth.md) | Argon2id + JWT (HS256) |
-| [006](~/projects/adr/006-websocket-broadcast-per-room.md) | Broadcast channel per WebSocket room |
-| [007](~/projects/adr/007-two-stage-docker-build-rust.md) | Two-stage Docker build |
-| [008](~/projects/adr/008-caddy-reverse-proxy.md) | Caddy som reverse proxy |
-| [009](~/projects/adr/009-ansible-single-server-deployment.md) | Ansible til deployment |
-| [010](~/projects/adr/010-ipfs-dnslink-frontend.md) | IPFS + DNSLink til frontend |
-| [011](~/projects/adr/011-cloudflare-turnstile-captcha.md) | Cloudflare Turnstile |
-| [012](~/projects/adr/012-environment-configuration.md) | Environment-driven configuration |
+| [0001](~/projects/adrs/0001-axum-over-actix.md) | Axum over Actix-web |
+| [0002](~/projects/adrs/0002-sqlx-runtime-api.md) | SQLx runtime API over compile-time macros |
+| [0003](~/projects/adrs/0003-rustls-over-native-tls.md) | rustls over native-tls |
+| [0004](~/projects/adrs/0004-lib-bin-split.md) | lib + bin split til integration tests |
+| [0005](~/projects/adrs/0005-authenticate-plain-async-fn.md) | authenticate som plain async fn |
+| [0006](~/projects/adrs/0006-broadcast-channel-per-room.md) | Broadcast channel per WebSocket room |
+| [0007](~/projects/adrs/0007-jwt-query-param-websocket.md) | JWT via query-parameter til WebSocket |
+| [0008](~/projects/adrs/0008-ipfs-dnslink-frontend.md) | IPFS + DNSLink til frontend |
+| [0009](~/projects/adrs/0009-caddy-reverse-proxy.md) | Caddy som reverse proxy |
+| [0010](~/projects/adrs/0010-ansible-templates-caddyfile.md) | Ansible-templates til Caddyfile |
+| [0011](~/projects/adrs/0011-argon2id-passwords.md) | Argon2id til password-hashing |
+| [0012](~/projects/adrs/0012-feature-flags-via-empty-env.md) | Tom env-variabel som feature flag |
+| [0013](~/projects/adrs/0013-owasp-by-default.md) | OWASP-sikkerhed som del af definition of done |
+| [0014](~/projects/adrs/0014-gdpr-and-cis-docker.md) | GDPR og CIS Docker Benchmark |
+| [0015](~/projects/adrs/0015-gdpr-deletion-strategy-and-smoke-test.md) | GDPR-sletningstrategi og post-deploy smoke test |
 
 ### Projekt-specifikke detaljer
 
