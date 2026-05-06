@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privatlivspolitik — Chat</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .container {
+      max-width: 680px;
+      margin: 48px auto;
+      padding: 0 16px 64px;
+    }
+    h1 { font-size: 24px; margin-bottom: 8px; }
+    .updated { font-size: 13px; color: var(--text-muted); margin-bottom: 32px; }
+    h2 { font-size: 16px; font-weight: 600; margin: 28px 0 10px; color: var(--accent); }
+    p, li { font-size: 14px; line-height: 1.7; color: var(--text); }
+    ul { padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+    .back { font-size: 13px; color: var(--text-muted); margin-bottom: 32px; display: block; }
+    .back:hover { color: var(--accent); }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 8px; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+    th { color: var(--text-muted); font-weight: 600; }
+    td { color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a class="back" href="index.html">← Tilbage til log ind</a>
+    <h1>Privatlivspolitik</h1>
+    <p class="updated">Sidst opdateret: 6. maj 2026</p>
+
+    <p>
+      Denne politik beskriver hvilke personoplysninger vi indsamler, hvorfor vi
+      indsamler dem, og hvilke rettigheder du har som bruger af chat-tjenesten
+      på <strong>chat.apps.gihc.online</strong>.
+    </p>
+
+    <h2>Hvad gemmes</h2>
+    <table>
+      <tr><th>Data</th><th>Formål</th></tr>
+      <tr><td>Brugernavn</td><td>Identifikation i chat</td></tr>
+      <tr><td>Email-adresse</td><td>Verifikation af konto ved oprettelse</td></tr>
+      <tr><td>Adgangskode (Argon2id-hash)</td><td>Autentificering — selve adgangskoden gemmes aldrig</td></tr>
+      <tr><td>Beskeder</td><td>Chat-historik i rum og private samtaler</td></tr>
+      <tr><td>Tidsstempler</td><td>Oprettelsestidspunkt for konto og beskeder</td></tr>
+    </table>
+
+    <h2>Hvad gemmes ikke</h2>
+    <ul>
+      <li>IP-adresser logges ikke og gemmes ikke</li>
+      <li>Browserdata, cookies og trackingdata indsamles ikke</li>
+      <li>Data deles ikke med tredjepart undtagen de nødvendige underleverandører nedenfor</li>
+    </ul>
+
+    <h2>Underleverandører</h2>
+    <table>
+      <tr><th>Underleverandør</th><th>Formål</th><th>Lokation</th></tr>
+      <tr>
+        <td>Hetzner Online GmbH</td>
+        <td>Serverdrift — PostgreSQL-database og API</td>
+        <td>Helsinki, Finland (EU)</td>
+      </tr>
+      <tr>
+        <td>Cloudflare (Turnstile)</td>
+        <td>CAPTCHA-beskyttelse ved registrering</td>
+        <td>USA (behandling af challenge-token — ingen persondata sendes)</td>
+      </tr>
+      <tr>
+        <td>Resend</td>
+        <td>Afsendelse af verifikationsemail ved kontooprettelse</td>
+        <td>USA</td>
+      </tr>
+    </table>
+
+    <h2>Dataopbevaring</h2>
+    <p>
+      Konti og beskeder gemmes uden tidsbegrænsning, så længe kontoen er aktiv.
+      Der sker ingen automatisk sletning af inaktive konti. Når du sletter din
+      konto, slettes alle dine oplysninger — brugernavn, email, beskeder og
+      private samtaler — straks og permanent.
+    </p>
+
+    <h2>Dine rettigheder</h2>
+    <p>Som registreret bruger har du ret til:</p>
+    <ul>
+      <li>
+        <strong>Indsigt</strong> — du kan til enhver tid se alle gemte oplysninger
+        om dig via <em>Kontoindstillinger</em> eller direkte via API-endpointet
+        <code>GET /auth/me</code>.
+      </li>
+      <li>
+        <strong>Sletning</strong> — du kan slette din konto og alle tilknyttede
+        data permanent via <em>Kontoindstillinger → Slet konto</em>.
+      </li>
+      <li>
+        <strong>Dataportabilitet og berigtigelse</strong> — kontakt os på
+        nedenstående email.
+      </li>
+    </ul>
+
+    <h2>Kontakt</h2>
+    <p>
+      Spørgsmål om behandling af dine personoplysninger kan rettes til:<br>
+      <a href="mailto:kristian.n.jensen@gmail.com">kristian.n.jensen@gmail.com</a>
+    </p>
+  </div>
+</body>
+</html>

@@ -79,10 +79,10 @@ Projektet gemmer persondata (email, brugernavn) på EU-borgere. Se ADR-0014.
 
 - [x] `DELETE /auth/me` — ret til sletning (sletter bruger + DM-rum; beskeder og medlemskaber via CASCADE)
 - [x] `GET /auth/me` — returnerer alle gemte felter: id, username, email, email_verified, created_at
-- [ ] Tilføj privacy policy-side til frontend med oplysning om hvad der gemmes og hvorfor
-- [ ] Dokumentér dataopbevaring: hvor længe gemmes beskeder og konti?
-- [ ] Bekræft at PostgreSQL-data ikke replikeres til tredjelande (check VPS-lokation)
-- [ ] Verifikationstoken er persondata — sørg for at det slettes ved verify og ved sletning af konto
+- [x] Tilføj privacy policy-side til frontend (`frontend/privacy.html`) med oplysning om hvad der gemmes og hvorfor; link tilføjet til registreringsformularen
+- [x] Dokumentér dataopbevaring — politik: konti og beskeder gemmes uden tidsbegrænsning indtil brugeren sletter sin konto (DELETE /auth/me); ved sletning fjernes beskeder og rum-medlemskaber via ON DELETE CASCADE; ingen automatisk sletning af inaktive konti
+- [x] Bekræft at PostgreSQL-data ikke replikeres til tredjelande — VPS kører hos Hetzner i Helsinki, Finland (EU)
+- [x] Verifikationstoken er persondata — slettes ved verify (`verification_token = NULL`) og ved sletning af konto (hele brugerrækken slettes via CASCADE); eksponeres aldrig i API-svar (`#[serde(skip)]`)
 
 ---
 
