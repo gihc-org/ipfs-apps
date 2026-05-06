@@ -73,11 +73,13 @@
     const params = new URLSearchParams(location.search);
     const roomId = params.get('room_id');
     const roomName = decodeURIComponent(params.get('room_name') || 'Rum');
+    const isDm = params.get('is_dm') === 'true';
     if (!roomId) { location.href = 'rooms.html'; }
 
-    document.getElementById('roomTitle').textContent = '# ' + roomName;
+    const prefix = isDm ? '@ ' : '# ';
+    document.getElementById('roomTitle').textContent = prefix + roomName;
     document.getElementById('navUser').textContent = username || '';
-    document.title = `#${roomName} — Chat`;
+    document.title = `${isDm ? '@' : '#'}${roomName} — Chat`;
 
     const messagesEl = document.getElementById('messages');
     const statusEl = document.getElementById('status');

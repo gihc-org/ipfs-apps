@@ -161,13 +161,27 @@ ipfs add -r frontend/
 
 ## Key decisions
 
-- **Axum over Actix-web:** better async ergonomics, clean extractor model
-- **SQLx runtime API** (not `query!` macro): avoids needing `DATABASE_URL` at compile time inside Docker
-- **Broadcast channel per room:** simple in-memory fan-out; restarting the server drops active connections (acceptable)
-- **DNSLink on frontend domain:** gives a single stable `ALLOWED_ORIGIN` instead of a wildcard in production
-- **Ansible templates Caddyfile:** Caddy does not support `{env.VAR}` in site addresses, so the domain is rendered by Ansible at deploy time
-- **rustls over native-tls:** no `libssl-dev` or `pkg-config` needed to compile — simpler Dockerfile and local dev setup
-- **lib + bin split:** `src/lib.rs` exports the router and state so integration tests can import the crate without duplicating setup
+Arkitektoniske beslutninger er dokumenteret som ADR'er i `~/projects/adr/`. Listen nedenfor viser hvilke ADR'er dette projekt følger:
+
+| ADR | Beslutning |
+|-----|------------|
+| [001](~/projects/adr/001-axum-web-framework.md) | Axum over Actix-web |
+| [002](~/projects/adr/002-rustls-over-native-tls.md) | rustls over native-tls |
+| [003](~/projects/adr/003-rust-lib-bin-split.md) | lib + bin split til integration tests |
+| [004](~/projects/adr/004-sqlx-runtime-api.md) | SQLx runtime API over compile-time macros |
+| [005](~/projects/adr/005-argon2id-jwt-auth.md) | Argon2id + JWT (HS256) |
+| [006](~/projects/adr/006-websocket-broadcast-per-room.md) | Broadcast channel per WebSocket room |
+| [007](~/projects/adr/007-two-stage-docker-build-rust.md) | Two-stage Docker build |
+| [008](~/projects/adr/008-caddy-reverse-proxy.md) | Caddy som reverse proxy |
+| [009](~/projects/adr/009-ansible-single-server-deployment.md) | Ansible til deployment |
+| [010](~/projects/adr/010-ipfs-dnslink-frontend.md) | IPFS + DNSLink til frontend |
+| [011](~/projects/adr/011-cloudflare-turnstile-captcha.md) | Cloudflare Turnstile |
+| [012](~/projects/adr/012-environment-configuration.md) | Environment-driven configuration |
+
+### Projekt-specifikke detaljer
+
+Disse er ikke generelle nok til ADR'er, men vigtige for dette projekt:
+
 - **`authenticate` as plain async fn:** Rust 1.88 tightened lifetime rules for async fns in traits, breaking the `FromRequestParts` extractor approach
 - **Turnstile v0 URL:** Cloudflare Turnstile uses `/v0/` paths for both `api.js` and `siteverify` — `/v1/` returnerer 404/405 og fejler lydløst
 - **`reqwest` without `form` feature:** reqwest 0.12 removed the `form` feature flag — `.form()` metoden er altid tilgængelig uden at angive den

@@ -13,7 +13,7 @@ use futures::{SinkExt, StreamExt};
 use serde::Deserialize;
 use uuid::Uuid;
 
-use crate::{auth::decode_token, models::User, ws::get_or_create_sender, AppState};
+use crate::{auth::decode_token, models::{Room, User}, ws::get_or_create_sender, AppState};
 
 #[derive(Deserialize)]
 pub struct WsQuery {
@@ -42,6 +42,33 @@ pub async fn handler(
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"detail": "Database error"}))))?
         .ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"detail": "User not found"}))))?;
+
+    // Check membership for DM rooms
+    let room = sqlx::query_as::<_, Room>("SELECT * FROM rooms WHERE id = $1")
+        .bind(room_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"detail": "Database error"}))))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, Json(serde_json::json!({"detail": "Room not found"}))))?;
+
+    if room.is_dm {
+        let is_member = sqlx::query(
+            "SELECT 1 FROM room_members WHERE room_id = $1 AND user_id = $2",
+        )
+        .bind(room_id)
+        .bind(user.id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"detail": "Database error"}))))?
+        .is_some();
+
+        if !is_member {
+            return Err((
+                StatusCode::FORBIDDEN,
+                Json(serde_json::json!({"detail": "Not a member of this DM"})),
+            ));
+        }
+    }
 
     Ok(ws.on_upgrade(move |socket| handle_socket(socket, state, room_id, user)))
 }

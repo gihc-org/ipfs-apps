@@ -25,14 +25,17 @@ pub struct CreateRoom {
     pub name: String,
 }
 
-/// `GET /rooms` — returns all rooms ordered by creation time. Requires auth.
+/// `GET /rooms` — returns public rooms (excludes DM rooms) ordered by creation
+/// time. Requires auth.
 pub async fn list(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<Room>>, ApiError> {
     authenticate(&state, &headers).await?;
 
-    let rooms = sqlx::query_as::<_, Room>("SELECT * FROM rooms ORDER BY created_at")
+    let rooms = sqlx::query_as::<_, Room>(
+        "SELECT * FROM rooms WHERE is_dm = FALSE ORDER BY created_at"
+    )
         .fetch_all(&state.db)
         .await
         .map_err(|_| err(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
@@ -75,12 +78,41 @@ pub async fn create(
 /// `GET /rooms/:id/messages` — returns the 50 most recent messages with
 /// their author's username. The LIMIT keeps response sizes bounded; a
 /// cursor-based pagination endpoint would be the next step if history grows.
+///
+/// For DM rooms the authenticated user must be a member of the room.
 pub async fn messages(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(room_id): Path<Uuid>,
 ) -> Result<Json<Vec<MessageWithUser>>, ApiError> {
-    authenticate(&state, &headers).await?;
+    let current_user = authenticate(&state, &headers).await?;
+
+    // Check membership for DM rooms
+    let room = sqlx::query_as::<_, Room>("SELECT * FROM rooms WHERE id = $1")
+        .bind(room_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|_| err(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
+        .ok_or_else(|| err(StatusCode::NOT_FOUND, "Rum ikke fundet"))?;
+
+    if room.is_dm {
+        let is_member = sqlx::query(
+            "SELECT 1 FROM room_members WHERE room_id = $1 AND user_id = $2",
+        )
+        .bind(room_id)
+        .bind(current_user.id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|_| err(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
+        .is_some();
+
+        if !is_member {
+            return Err(err(
+                StatusCode::FORBIDDEN,
+                "Du er ikke medlem af denne samtale",
+            ));
+        }
+    }
 
     let messages = sqlx::query_as::<_, MessageWithUser>(
         r#"

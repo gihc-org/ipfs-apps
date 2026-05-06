@@ -42,6 +42,8 @@ pub fn build_app(state: AppState) -> Router {
         .route("/auth/verify", get(routes::auth::verify))
         .route("/rooms", get(routes::rooms::list).post(routes::rooms::create))
         .route("/rooms/:id/messages", get(routes::rooms::messages))
+        .route("/users", get(routes::dms::list_users))
+        .route("/dms", get(routes::dms::list_dms).post(routes::dms::create_or_get_dm))
         .route("/ws/:room_id", get(routes::chat::handler))
         .layer(cors)
         .with_state(state)

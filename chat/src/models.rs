@@ -23,6 +23,16 @@ pub struct User {
 pub struct Room {
     pub id: Uuid,
     pub name: String,
+    pub is_dm: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Result of listing DM conversations for the authenticated user.
+#[derive(sqlx::FromRow, Serialize)]
+pub struct DmConversation {
+    pub room_id: Uuid,
+    pub other_user_id: Uuid,
+    pub other_username: String,
     pub created_at: DateTime<Utc>,
 }
 
