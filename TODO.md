@@ -86,6 +86,22 @@ Projektet gemmer persondata (email, brugernavn) på EU-borgere. Se ADR-0014.
 
 ---
 
+## WebRTC skærmdeling (ADR-0016)
+
+### Fase 1 — 1:1 skærmdeling i DM-rum
+
+- [ ] **Backend** (`src/routes/chat.rs`): viderebringe `signal`-beskeder i WS-broadcast med `from` sat til autentificeret brugers UUID; ikke gemme i database
+- [ ] **Frontend** (`frontend/chat.html`): "Del skærm"-knap i DM-rum, `getDisplayMedia()`, `RTCPeerConnection` med STUN, stop-knap
+- [ ] **Frontend**: modtager-side viser indgående stream i `<video>`-element; håndter offer/answer/ICE-candidate flow
+- [ ] **Integration test**: signal-beskeder videresendes korrekt og gemmes ikke
+
+### Fase 2 — Gruppe-huddles (fremtidig)
+
+- [ ] Ny ADR for gruppe-topologi (mesh vs. SFU)
+- [ ] Eventuel TURN-server (`coturn`) i `docker-compose.yml` hvis STUN ikke slår til
+
+---
+
 ## CIS Docker Benchmark
 
 Hærdning af Docker-opsætning. Se ADR-0014.
