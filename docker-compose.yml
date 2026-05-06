@@ -3,10 +3,6 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
     environment:
       DOMAIN: ${DOMAIN}
       ACME_EMAIL: ${ACME_EMAIL}
@@ -39,9 +35,6 @@ services:
     volumes:
       - ipfs_data:/data/ipfs
       - ./frontend:/frontend:ro
-    ports:
-      - "4001:4001"
-      - "4001:4001/udp"
 
   postgres:
     image: postgres:16-alpine

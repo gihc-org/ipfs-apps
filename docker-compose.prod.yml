@@ -1,0 +1,8 @@
+# Produktionskonfiguration — bruges af Ansible:
+# docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+services:
+  caddy:
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"

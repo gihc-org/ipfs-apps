@@ -1,5 +1,6 @@
 # Miljø
 .env
+frontend/config.local.js
 
 # Rust
 chat/target/
@@ -11,3 +12,4 @@ chat/target/
 
 # Screenshots
 *.png
+.aider*

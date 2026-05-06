@@ -1,3 +1,29 @@
-:80 {
-    reverse_proxy chat:8001
+:8888 {
+    handle /auth/* {
+        reverse_proxy chat:8080
+    }
+    handle /rooms {
+        reverse_proxy chat:8080
+    }
+    handle /rooms/* {
+        reverse_proxy chat:8080
+    }
+    handle /ws/* {
+        reverse_proxy chat:8080
+    }
+    handle /users {
+        reverse_proxy chat:8080
+    }
+    handle /dms {
+        reverse_proxy chat:8080
+    }
+    handle /config.js {
+        rewrite * /config.local.js
+        root * /frontend
+        file_server
+    }
+    handle {
+        root * /frontend
+        file_server
+    }
 }

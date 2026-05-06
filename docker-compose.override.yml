@@ -2,11 +2,18 @@
 # I produktion: docker compose -f docker-compose.yml up
 services:
   caddy:
+    ports:
+      - "8888:8888"
     volumes:
       - ./caddy/Caddyfile.local:/etc/caddy/Caddyfile:ro
+      - ./frontend:/frontend:ro
       - caddy_data:/data
       - caddy_config:/config
 
   chat:
     ports:
-      - "8001:8001"
+      - "8001:8080"
+
+  postgres:
+    ports:
+      - "5432:5432"

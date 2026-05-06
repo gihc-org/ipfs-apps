@@ -63,7 +63,7 @@
 
     - name: Build and start services
       ansible.builtin.command:
-        cmd: docker compose -f docker-compose.yml up -d --build
+        cmd: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
         chdir: "{{ project_dir }}"
       register: compose_result
       changed_when: "'Started' in compose_result.stdout or 'Created' in compose_result.stdout"
