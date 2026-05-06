@@ -38,7 +38,7 @@ pub fn build_app(state: AppState) -> Router {
     Router::new()
         .route("/auth/register", post(routes::auth::register))
         .route("/auth/token", post(routes::auth::login))
-        .route("/auth/me", get(routes::auth::me))
+        .route("/auth/me", get(routes::auth::me).delete(routes::auth::delete_me))
         .route("/auth/verify", get(routes::auth::verify))
         .route("/rooms", get(routes::rooms::list).post(routes::rooms::create))
         .route("/rooms/:id/messages", get(routes::rooms::messages))

@@ -173,13 +173,42 @@ pub async fn login(
     }))
 }
 
-/// `GET /auth/me` — returns the authenticated user's id and username.
+/// `GET /auth/me` — returns all stored personal data for the authenticated user.
 pub async fn me(
     State(state): State<AppState>,
     headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, ApiError> {
+) -> Result<Json<User>, ApiError> {
     let user = authenticate(&state, &headers).await?;
-    Ok(Json(serde_json::json!({"id": user.id, "username": user.username})))
+    Ok(Json(user))
+}
+
+/// `DELETE /auth/me` — permanently deletes the authenticated user's account.
+///
+/// Deletes DM rooms the user is a member of (private conversations have no
+/// value without both parties). Messages in public rooms and room memberships
+/// are removed via ON DELETE CASCADE on the users table.
+pub async fn delete_me(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<StatusCode, ApiError> {
+    let user = authenticate(&state, &headers).await?;
+
+    sqlx::query(
+        "DELETE FROM rooms WHERE is_dm = TRUE
+         AND id IN (SELECT room_id FROM room_members WHERE user_id = $1)",
+    )
+    .bind(user.id)
+    .execute(&state.db)
+    .await
+    .map_err(|_| err(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    sqlx::query("DELETE FROM users WHERE id = $1")
+        .bind(user.id)
+        .execute(&state.db)
+        .await
+        .map_err(|_| err(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// `GET /auth/verify?token=<uuid>` — marks the user's email as verified and

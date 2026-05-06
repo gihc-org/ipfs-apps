@@ -101,7 +101,7 @@ async fn register_success(pool: PgPool) {
         "POST",
         "/auth/register",
         None,
-        Some(json!({"username": "alice", "password": "password123"})),
+        Some(json!({"username": "alice", "password": "password123", "email": "alice@test.example", "turnstile_token": "test"})),
     )
     .await;
     assert_eq!(status, StatusCode::CREATED);
@@ -112,17 +112,17 @@ async fn register_success(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn register_duplicate_username(pool: PgPool) {
     let app = build_app(test_state(pool));
-    api(&app, "POST", "/auth/register", None, Some(json!({"username": "alice", "password": "pw"}))).await;
+    api(&app, "POST", "/auth/register", None, Some(json!({"username": "alice", "password": "password123", "email": "alice@test.example", "turnstile_token": "test"}))).await;
     let (status, body) = api(
         &app,
         "POST",
         "/auth/register",
         None,
-        Some(json!({"username": "alice", "password": "different"})),
+        Some(json!({"username": "alice", "password": "different1", "email": "alice2@test.example", "turnstile_token": "test"})),
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_eq!(body["detail"], "Username already taken");
+    assert_eq!(body["detail"], "Brugernavnet er allerede taget");
 }
 
 // ── /auth/token ──────────────────────────────────────────────────────────────
@@ -130,13 +130,13 @@ async fn register_duplicate_username(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn login_success(pool: PgPool) {
     let app = build_app(test_state(pool));
-    api(&app, "POST", "/auth/register", None, Some(json!({"username": "bob", "password": "secret"}))).await;
+    api(&app, "POST", "/auth/register", None, Some(json!({"username": "bob", "password": "password123", "email": "bob@test.example", "turnstile_token": "test"}))).await;
     let (status, body) = api(
         &app,
         "POST",
         "/auth/token",
         None,
-        Some(json!({"username": "bob", "password": "secret"})),
+        Some(json!({"username": "bob", "password": "password123"})),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -147,7 +147,7 @@ async fn login_success(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn login_wrong_password(pool: PgPool) {
     let app = build_app(test_state(pool));
-    api(&app, "POST", "/auth/register", None, Some(json!({"username": "carol", "password": "correct"}))).await;
+    api(&app, "POST", "/auth/register", None, Some(json!({"username": "carol", "password": "password123", "email": "carol@test.example", "turnstile_token": "test"}))).await;
     let (status, _) = api(
         &app,
         "POST",
@@ -178,10 +178,48 @@ async fn login_unknown_user(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn me_returns_current_user(pool: PgPool) {
     let app = build_app(test_state(pool));
-    let token = register_and_login(&app, "dave", "pw").await;
+    let token = register_and_login(&app,"dave", "password").await;
     let (status, body) = api(&app, "GET", "/auth/me", Some(&token), None).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["username"], "dave");
+    assert!(body["email"].is_string());
+    assert!(body["email_verified"].is_boolean());
+    assert!(body["created_at"].is_string());
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn delete_me_removes_account(pool: PgPool) {
+    let app = build_app(test_state(pool));
+    let token = register_and_login(&app,"todelete", "password").await;
+    let (status, _) = api(&app, "DELETE", "/auth/me", Some(&token), None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    // Token is now invalid — account is gone
+    let (status, _) = api(&app, "GET", "/auth/me", Some(&token), None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn delete_me_removes_dm_rooms(pool: PgPool) {
+    let app = build_app(test_state(pool));
+    let token_a = register_and_login(&app,"alice", "password").await;
+    let token_b = register_and_login(&app,"bob", "password").await;
+    let (_, user_b) = api(&app, "GET", "/auth/me", Some(&token_b), None).await;
+    api(&app, "POST", "/dms", Some(&token_a),
+        Some(json!({"user_id": user_b["id"]}))).await;
+
+    api(&app, "DELETE", "/auth/me", Some(&token_a), None).await;
+
+    // Bob's DM list should now be empty
+    let (status, body) = api(&app, "GET", "/dms", Some(&token_b), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body.as_array().unwrap().len(), 0);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn delete_me_requires_auth(pool: PgPool) {
+    let app = build_app(test_state(pool));
+    let (status, _) = api(&app, "DELETE", "/auth/me", None, None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -210,7 +248,7 @@ async fn list_rooms_requires_auth(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn list_rooms_empty(pool: PgPool) {
     let app = build_app(test_state(pool));
-    let token = register_and_login(&app, "eve", "pw").await;
+    let token = register_and_login(&app,"eve", "password").await;
     let (status, body) = api(&app, "GET", "/rooms", Some(&token), None).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body, json!([]));
@@ -219,7 +257,7 @@ async fn list_rooms_empty(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn create_room_success(pool: PgPool) {
     let app = build_app(test_state(pool));
-    let token = register_and_login(&app, "frank", "pw").await;
+    let token = register_and_login(&app,"frank", "password").await;
     let (status, body) = api(
         &app,
         "POST",
@@ -236,7 +274,7 @@ async fn create_room_success(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn create_room_duplicate(pool: PgPool) {
     let app = build_app(test_state(pool));
-    let token = register_and_login(&app, "grace", "pw").await;
+    let token = register_and_login(&app,"grace", "password").await;
     api(&app, "POST", "/rooms", Some(&token), Some(json!({"name": "lobby"}))).await;
     let (status, body) = api(
         &app,
@@ -260,7 +298,7 @@ async fn create_room_requires_auth(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn list_rooms_shows_created_rooms(pool: PgPool) {
     let app = build_app(test_state(pool));
-    let token = register_and_login(&app, "henry", "pw").await;
+    let token = register_and_login(&app,"henry", "password").await;
     api(&app, "POST", "/rooms", Some(&token), Some(json!({"name": "alpha"}))).await;
     api(&app, "POST", "/rooms", Some(&token), Some(json!({"name": "beta"}))).await;
     let (status, body) = api(&app, "GET", "/rooms", Some(&token), None).await;
@@ -277,7 +315,7 @@ async fn list_rooms_shows_created_rooms(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn messages_empty_for_new_room(pool: PgPool) {
     let app = build_app(test_state(pool));
-    let token = register_and_login(&app, "iris", "pw").await;
+    let token = register_and_login(&app,"iris", "password").await;
     let (_, room) = api(
         &app,
         "POST",
@@ -295,7 +333,7 @@ async fn messages_empty_for_new_room(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn messages_requires_auth(pool: PgPool) {
     let app = build_app(test_state(pool));
-    let token = register_and_login(&app, "jack", "pw").await;
+    let token = register_and_login(&app,"jack", "password").await;
     let (_, room) = api(
         &app,
         "POST",
@@ -314,8 +352,8 @@ async fn messages_requires_auth(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn list_users_excludes_self(pool: PgPool) {
     let app = build_app(test_state(pool));
-    let token = register_and_login(&app, "alice", "pw").await;
-    register_and_login(&app, "bob", "pw").await;
+    let token = register_and_login(&app,"alice", "password").await;
+    register_and_login(&app,"bob", "password").await;
     let (status, body) = api(&app, "GET", "/users", Some(&token), None).await;
     assert_eq!(status, StatusCode::OK);
     let users = body.as_array().unwrap();
@@ -326,9 +364,9 @@ async fn list_users_excludes_self(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn search_users_finds_by_substring(pool: PgPool) {
     let app = build_app(test_state(pool));
-    let token = register_and_login(&app, "alice", "pw").await;
-    register_and_login(&app, "bobby", "pw").await;
-    register_and_login(&app, "carol", "pw").await;
+    let token = register_and_login(&app,"alice", "password").await;
+    register_and_login(&app,"bobby", "password").await;
+    register_and_login(&app,"carol", "password").await;
     let (status, body) = api(&app, "GET", "/users?search=bob", Some(&token), None).await;
     assert_eq!(status, StatusCode::OK);
     let users = body.as_array().unwrap();
@@ -348,8 +386,8 @@ async fn list_users_requires_auth(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn create_dm_returns_room(pool: PgPool) {
     let app = build_app(test_state(pool));
-    let token_a = register_and_login(&app, "alice", "pw").await;
-    let token_b = register_and_login(&app, "bob", "pw").await;
+    let token_a = register_and_login(&app,"alice", "password").await;
+    let token_b = register_and_login(&app,"bob", "password").await;
     let (_, user_b) = api(&app, "GET", "/auth/me", Some(&token_b), None).await;
     let bob_id = user_b["id"].as_str().unwrap();
 
@@ -363,8 +401,8 @@ async fn create_dm_returns_room(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn dm_is_idempotent(pool: PgPool) {
     let app = build_app(test_state(pool));
-    let token_a = register_and_login(&app, "alice", "pw").await;
-    let token_b = register_and_login(&app, "bob", "pw").await;
+    let token_a = register_and_login(&app,"alice", "password").await;
+    let token_b = register_and_login(&app,"bob", "password").await;
     let (_, user_a) = api(&app, "GET", "/auth/me", Some(&token_a), None).await;
     let (_, user_b) = api(&app, "GET", "/auth/me", Some(&token_b), None).await;
     let alice_id = user_a["id"].as_str().unwrap();
@@ -381,7 +419,7 @@ async fn dm_is_idempotent(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn cannot_dm_self(pool: PgPool) {
     let app = build_app(test_state(pool));
-    let token = register_and_login(&app, "alice", "pw").await;
+    let token = register_and_login(&app,"alice", "password").await;
     let (_, me) = api(&app, "GET", "/auth/me", Some(&token), None).await;
     let (status, _) = api(&app, "POST", "/dms", Some(&token),
         Some(json!({"user_id": me["id"]}))).await;
@@ -391,7 +429,7 @@ async fn cannot_dm_self(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn cannot_dm_nonexistent_user(pool: PgPool) {
     let app = build_app(test_state(pool));
-    let token = register_and_login(&app, "alice", "pw").await;
+    let token = register_and_login(&app,"alice", "password").await;
     let (status, _) = api(&app, "POST", "/dms", Some(&token),
         Some(json!({"user_id": "00000000-0000-0000-0000-000000000000"}))).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
@@ -400,8 +438,8 @@ async fn cannot_dm_nonexistent_user(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn list_dms_shows_conversations(pool: PgPool) {
     let app = build_app(test_state(pool));
-    let token_a = register_and_login(&app, "alice", "pw").await;
-    let token_b = register_and_login(&app, "bob", "pw").await;
+    let token_a = register_and_login(&app,"alice", "password").await;
+    let token_b = register_and_login(&app,"bob", "password").await;
     let (_, user_b) = api(&app, "GET", "/auth/me", Some(&token_b), None).await;
 
     api(&app, "POST", "/dms", Some(&token_a),
@@ -428,8 +466,8 @@ async fn list_dms_requires_auth(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn rooms_list_excludes_dm_rooms(pool: PgPool) {
     let app = build_app(test_state(pool));
-    let token_a = register_and_login(&app, "alice", "pw").await;
-    let token_b = register_and_login(&app, "bob", "pw").await;
+    let token_a = register_and_login(&app,"alice", "password").await;
+    let token_b = register_and_login(&app,"bob", "password").await;
 
     api(&app, "POST", "/rooms", Some(&token_a),
         Some(json!({"name": "public"}))).await;
@@ -448,9 +486,9 @@ async fn rooms_list_excludes_dm_rooms(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn non_member_cannot_read_dm_messages(pool: PgPool) {
     let app = build_app(test_state(pool));
-    let token_a = register_and_login(&app, "alice", "pw").await;
-    let token_b = register_and_login(&app, "bob", "pw").await;
-    let token_c = register_and_login(&app, "carol", "pw").await;
+    let token_a = register_and_login(&app,"alice", "password").await;
+    let token_b = register_and_login(&app,"bob", "password").await;
+    let token_c = register_and_login(&app,"carol", "password").await;
 
     let (_, user_b) = api(&app, "GET", "/auth/me", Some(&token_b), None).await;
     let (_, dm) = api(&app, "POST", "/dms", Some(&token_a),
@@ -465,8 +503,8 @@ async fn non_member_cannot_read_dm_messages(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn member_can_read_dm_messages(pool: PgPool) {
     let app = build_app(test_state(pool));
-    let token_a = register_and_login(&app, "alice", "pw").await;
-    let token_b = register_and_login(&app, "bob", "pw").await;
+    let token_a = register_and_login(&app,"alice", "password").await;
+    let token_b = register_and_login(&app,"bob", "password").await;
 
     let (_, user_b) = api(&app, "GET", "/auth/me", Some(&token_b), None).await;
     let (_, dm) = api(&app, "POST", "/dms", Some(&token_a),
@@ -483,8 +521,8 @@ async fn member_can_read_dm_messages(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn concurrent_dm_creation_yields_same_room(pool: PgPool) {
     let app = build_app(test_state(pool));
-    let token_a = register_and_login(&app, "alice", "pw").await;
-    let token_b = register_and_login(&app, "bob", "pw").await;
+    let token_a = register_and_login(&app,"alice", "password").await;
+    let token_b = register_and_login(&app,"bob", "password").await;
     
     let (_, user_a) = api(&app, "GET", "/auth/me", Some(&token_a), None).await;
     let (_, user_b) = api(&app, "GET", "/auth/me", Some(&token_b), None).await;
