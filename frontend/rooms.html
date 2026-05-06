@@ -105,7 +105,7 @@
     }
 
     async function init() {
-      const me = await api('/auth/me').catch(() => { location.href = 'index.html'; });
+      const me = await api('/auth/me').catch(() => { localStorage.clear(); location.href = 'index.html'; });
       if (!me) return;
       localStorage.setItem('username', me.username);
       document.getElementById('navUser').textContent = me.username;

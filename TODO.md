@@ -1,5 +1,16 @@
 # TODO
 
+## CI/CD — Woodpecker CI på Raspberry Pi
+
+- [ ] Installer Woodpecker server + agent på Raspberry Pi via Docker Compose
+- [ ] Forbind til GitHub som forge (OAuth app)
+- [ ] Tilføj `VAULT_PASSWORD` som krypteret pipeline-secret i Woodpecker UI
+- [ ] Opret `.woodpecker.yaml` i repo med Ansible deploy-step
+- [ ] Konfigurer cron-job i Woodpecker UI (fx hvert 10. minut) som pull-mekanisme
+- [ ] Valgfrit: tilføj webhook fra GitHub til Pi for øjeblikkelig deploy ved push
+
+---
+
 ## Sikkerhed — OWASP-scanning
 
 Se `OWASP-IMPROVEMENTS.md` for kendte fund og anbefalinger til kodeændringer.
