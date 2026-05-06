@@ -10,6 +10,10 @@
 - [ ] Valgfrit: tilføj webhook fra GitHub til Pi for øjeblikkelig deploy ved push
 - [ ] Kør `e2e/` Playwright-tests i pipeline før deploy (kræver Chromium i CI-image)
 
+### Allerede automatiseret
+
+- [x] Post-deploy smoke test (`scripts/smoke-test.sh`) — kører automatisk sidst i Ansible-playbook'en og tester login, GET /auth/me, GET /rooms og DELETE /auth/me mod prod
+
 ---
 
 ## Sikkerhed — OWASP-scanning
@@ -73,8 +77,8 @@ Se `OWASP-IMPROVEMENTS.md` for detaljer og kodeeksempler.
 
 Projektet gemmer persondata (email, brugernavn) på EU-borgere. Se ADR-0014.
 
-- [ ] `DELETE /auth/me` — ret til sletning (slet bruger + tilknyttede beskeder)
-- [ ] `GET /auth/me` — udvid til at returnere alle gemte felter (ret til indsigt)
+- [x] `DELETE /auth/me` — ret til sletning (sletter bruger + DM-rum; beskeder og medlemskaber via CASCADE)
+- [x] `GET /auth/me` — returnerer alle gemte felter: id, username, email, email_verified, created_at
 - [ ] Tilføj privacy policy-side til frontend med oplysning om hvad der gemmes og hvorfor
 - [ ] Dokumentér dataopbevaring: hvor længe gemmes beskeder og konti?
 - [ ] Bekræft at PostgreSQL-data ikke replikeres til tredjelande (check VPS-lokation)
