@@ -100,6 +100,19 @@ async fn handle_socket(socket: WebSocket, state: AppState, room_id: Uuid, user: 
             let Ok(data) = serde_json::from_str::<serde_json::Value>(&text) else {
                 continue;
             };
+
+            // WebRTC signaling — forward with server-stamped `from`, never persisted
+            if data["type"] == "signal" {
+                if let Some(target) = data["target"].as_str() {
+                    if Uuid::parse_str(target).is_ok() {
+                        let mut fwd = data.clone();
+                        fwd["from"] = serde_json::Value::String(user.id.to_string());
+                        let _ = tx2.send(fwd.to_string());
+                    }
+                }
+                continue;
+            }
+
             let Some(content) = data["content"].as_str().map(str::trim).filter(|s| !s.is_empty() && s.len() <= 4000) else {
                 continue;
             };

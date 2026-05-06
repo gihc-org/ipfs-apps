@@ -11,14 +11,42 @@
 //! so tests can run in parallel without interfering with each other.
 
 use axum::{body::Body, http::{Request, StatusCode}};
+use futures::{SinkExt, StreamExt};
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use sqlx::PgPool;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::RwLock;
+use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tower::ServiceExt;
 
 use chat::{AppState, Config, RoomMap, build_app};
+
+/// Starts a real TCP listener on a random port and returns the bound address.
+async fn start_server(pool: PgPool) -> std::net::SocketAddr {
+    let state = test_state(pool);
+    let app = build_app(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    addr
+}
+
+/// Connects a WebSocket client and returns the split sink/stream.
+async fn ws_connect(
+    addr: std::net::SocketAddr,
+    room_id: &str,
+    token: &str,
+) -> (
+    futures::stream::SplitSink<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, WsMessage>,
+    futures::stream::SplitStream<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>>,
+) {
+    let url = format!("ws://{}/ws/{}?token={}", addr, room_id, token);
+    let (ws, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+    ws.split()
+}
 
 fn test_state(db: PgPool) -> AppState {
     AppState {
@@ -553,4 +581,129 @@ async fn concurrent_dm_creation_yields_same_room(pool: PgPool) {
     assert_eq!(status1, StatusCode::OK);
     assert_eq!(status2, StatusCode::OK);
     assert_eq!(body1["room_id"], body2["room_id"]);
+}
+
+// ── WebRTC signaling ──────────────────────────────────────────────────────────
+
+#[sqlx::test(migrations = "./migrations")]
+async fn signal_forwarded_with_server_stamped_from(pool: PgPool) {
+    let addr = start_server(pool.clone()).await;
+    let app = build_app(test_state(pool));
+
+    let token_a = register_and_login(&app, "alice", "password").await;
+    let token_b = register_and_login(&app, "bob", "password").await;
+    let (_, user_a) = api(&app, "GET", "/auth/me", Some(&token_a), None).await;
+    let (_, user_b) = api(&app, "GET", "/auth/me", Some(&token_b), None).await;
+    let alice_id = user_a["id"].as_str().unwrap();
+    let bob_id = user_b["id"].as_str().unwrap();
+
+    let (_, dm) = api(&app, "POST", "/dms", Some(&token_a),
+        Some(json!({"user_id": bob_id}))).await;
+    let room_id = dm["room_id"].as_str().unwrap();
+
+    let (mut alice_tx, mut alice_rx) = ws_connect(addr, room_id, &token_a).await;
+    let (_, mut bob_rx) = ws_connect(addr, room_id, &token_b).await;
+
+    // Drain join events
+    alice_rx.next().await; // alice sees her own join
+    bob_rx.next().await;   // bob sees alice's join
+    alice_rx.next().await; // alice sees bob's join
+
+    // Alice sends a WebRTC offer to Bob
+    let offer = json!({
+        "type": "signal",
+        "target": bob_id,
+        "signal": {"type": "offer", "sdp": "v=0\r\n..."}
+    });
+    alice_tx.send(WsMessage::Text(offer.to_string().into())).await.unwrap();
+
+    // Bob receives the forwarded signal with `from` set to Alice's UUID by the server
+    let msg = tokio::time::timeout(
+        std::time::Duration::from_secs(3),
+        bob_rx.next(),
+    ).await.unwrap().unwrap().unwrap();
+
+    let received: Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
+    assert_eq!(received["type"], "signal");
+    assert_eq!(received["from"], alice_id);
+    assert_eq!(received["target"], bob_id);
+    assert_eq!(received["signal"]["type"], "offer");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn signal_with_invalid_target_is_dropped(pool: PgPool) {
+    let addr = start_server(pool.clone()).await;
+    let app = build_app(test_state(pool));
+
+    let token_a = register_and_login(&app, "alice", "password").await;
+    let token_b = register_and_login(&app, "bob", "password").await;
+    let (_, user_b) = api(&app, "GET", "/auth/me", Some(&token_b), None).await;
+    let bob_id = user_b["id"].as_str().unwrap();
+
+    let (_, dm) = api(&app, "POST", "/dms", Some(&token_a),
+        Some(json!({"user_id": bob_id}))).await;
+    let room_id = dm["room_id"].as_str().unwrap();
+
+    let (mut alice_tx, mut alice_rx) = ws_connect(addr, room_id, &token_a).await;
+    let (_, mut bob_rx) = ws_connect(addr, room_id, &token_b).await;
+
+    // Drain join events
+    alice_rx.next().await;
+    bob_rx.next().await;
+    alice_rx.next().await;
+
+    // Send signal with a non-UUID target — should be silently dropped
+    let bad_signal = json!({
+        "type": "signal",
+        "target": "not-a-uuid",
+        "signal": {"type": "offer", "sdp": "..."}
+    });
+    alice_tx.send(WsMessage::Text(bad_signal.to_string().into())).await.unwrap();
+
+    // Bob should receive nothing within a short window
+    let result = tokio::time::timeout(
+        std::time::Duration::from_millis(300),
+        bob_rx.next(),
+    ).await;
+    assert!(result.is_err(), "Bob should not receive a signal with an invalid target");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn signal_is_not_persisted_to_database(pool: PgPool) {
+    let addr = start_server(pool.clone()).await;
+    let app = build_app(test_state(pool.clone()));
+
+    let token_a = register_and_login(&app, "alice", "password").await;
+    let token_b = register_and_login(&app, "bob", "password").await;
+    let (_, user_b) = api(&app, "GET", "/auth/me", Some(&token_b), None).await;
+    let bob_id = user_b["id"].as_str().unwrap();
+
+    let (_, dm) = api(&app, "POST", "/dms", Some(&token_a),
+        Some(json!({"user_id": bob_id}))).await;
+    let room_id = dm["room_id"].as_str().unwrap();
+
+    let (mut alice_tx, mut alice_rx) = ws_connect(addr, room_id, &token_a).await;
+    let (_, mut bob_rx) = ws_connect(addr, room_id, &token_b).await;
+
+    alice_rx.next().await;
+    bob_rx.next().await;
+    alice_rx.next().await;
+
+    alice_tx.send(WsMessage::Text(json!({
+        "type": "signal",
+        "target": bob_id,
+        "signal": {"type": "offer", "sdp": "..."}
+    }).to_string().into())).await.unwrap();
+
+    // Wait for Bob to receive it, confirming it was forwarded
+    tokio::time::timeout(std::time::Duration::from_secs(3), bob_rx.next())
+        .await.unwrap();
+
+    // Verify no messages were written to the database
+    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM messages WHERE room_id = $1")
+        .bind(uuid::Uuid::parse_str(room_id).unwrap())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count.0, 0, "Signal messages must not be persisted");
 }
