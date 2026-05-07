@@ -1,0 +1,45 @@
+---
+# Infrastruktur-provisioning — køres én gang ved serveropsætning eller
+# når Docker/OS-opsætningen skal ændres. Kræver root-adgang.
+#
+# Brug:
+#   ansible-playbook ansible/infra.yml -i ansible/inventory.yml --ask-vault-pass
+
+- name: Provisionér infrastruktur
+  hosts: gihc_vps
+
+  tasks:
+    - name: Install prerequisites
+      ansible.builtin.apt:
+        name: [ca-certificates, curl]
+        state: present
+        update_cache: true
+
+    - name: Add Docker GPG key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+
+    - name: Add Docker apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable"
+        state: present
+
+    - name: Install Docker
+      ansible.builtin.apt:
+        name: [docker-ce, docker-ce-cli, containerd.io, docker-compose-plugin]
+        state: present
+        update_cache: true
+
+    - name: Start and enable Docker
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Create project directory
+      ansible.builtin.file:
+        path: "{{ project_dir }}"
+        state: directory
+        mode: "0755"

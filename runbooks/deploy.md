@@ -12,12 +12,18 @@ ansible-galaxy collection install -r ansible/requirements.yml  # kun første gan
 
 ## Kør deploy
 
+**Ved release** (bruges normalt):
 ```bash
 cd /home/kristian/projects/ipfs-apps
+ansible-playbook ansible/deploy.yml -i ansible/inventory.yml --ask-vault-pass
+```
+
+**Første gang på en ny server** (infrastruktur + deploy):
+```bash
 ansible-playbook ansible/playbook.yml -i ansible/inventory.yml --ask-vault-pass
 ```
 
-Playbook'en gør i rækkefølge:
+`deploy.yml` gør i rækkefølge:
 
 1. Synkroniserer projektet til VPS (`/opt/chat/`) via rsync
 2. Renderer `Caddyfile` og `.env` fra Ansible-templates + vault
