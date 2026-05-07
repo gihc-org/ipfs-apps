@@ -89,12 +89,13 @@ Projektet gemmer persondata (email, brugernavn) på EU-borgere. Se ADR-0014.
 - [x] **Frontend** (`frontend/chat.html`): "Del skærm"-knap i DM-rum, `getDisplayMedia()`, `RTCPeerConnection` med STUN, stop-knap
 - [x] **Frontend**: modtager-side viser indgående stream i `<video>`-element; håndter offer/answer/ICE-candidate flow
 - [x] **Integration test**: signal-beskeder videresendes korrekt og gemmes ikke
+- [x] **TURN-server** (`coturn`) i `docker-compose.prod.yml` — løser NAT-traversal på tværs af netværk; HMAC-SHA1 tidsbegrænsede credentials via `--use-auth-secret`
+- [x] **Rejoin** — sharer sender automatisk nyt offer når peer vender tilbage til DM-rum
 - [ ] **Frontend**: disable "Del skærm"-knappen når peeren ikke er online (track tilstedeværelse via WS `join`/`leave`-beskeder eller heartbeat)
 
 ### Fase 2 — Gruppe-huddles (fremtidig)
 
 - [ ] Ny ADR for gruppe-topologi (mesh vs. SFU)
-- [ ] Eventuel TURN-server (`coturn`) i `docker-compose.yml` hvis STUN ikke slår til
 
 ---
 
