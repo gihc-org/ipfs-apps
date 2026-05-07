@@ -161,6 +161,7 @@
     let pc = null;
     let localStream = null;
     let sharing = false;
+    let lastOfferTime = 0;
 
     function sendSignal(signal) {
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
@@ -221,6 +222,7 @@
 
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
+      lastOfferTime = Date.now();
       sendSignal({ type: 'offer', sdp: pc.localDescription });
       sendSignal({ type: 'started' });
     }
@@ -250,11 +252,13 @@
 
     async function reinitiateOffer() {
       if (!sharing || !localStream) return;
-      if (pc && ['connected', 'connecting'].includes(pc.connectionState)) return;
+      if (pc && pc.connectionState === 'connecting') return;
+      if (Date.now() - lastOfferTime < 3000) return;
       createPeerConnection();
       localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
+      lastOfferTime = Date.now();
       sendSignal({ type: 'offer', sdp: pc.localDescription });
     }
 
