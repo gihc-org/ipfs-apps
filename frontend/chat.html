@@ -168,7 +168,7 @@
         const banner = document.getElementById('screenShareBanner');
         video.srcObject = e.streams[0];
         banner.textContent = `${roomName} deler skærm`;
-        panel.style.display = '';
+        panel.style.display = 'block';
       };
 
       pc.onconnectionstatechange = () => {
