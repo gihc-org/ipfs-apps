@@ -45,11 +45,9 @@
     }
     .input-bar input { flex: 1; }
     #status { font-size: 12px; color: var(--text-muted); padding: 4px 20px; background: var(--surface); }
-    #shareBtn {
-      padding: 6px 14px;
-      font-size: 13px;
-      display: none;
-    }
+
+    /* ── Skærmdeling ── */
+    #shareBtn { padding: 6px 14px; font-size: 13px; display: none; }
     #shareBtn.active { background: var(--danger); }
     #screenSharePanel {
       display: none;
@@ -58,34 +56,58 @@
       max-height: 40vh;
       overflow: hidden;
     }
-    #remoteVideo {
-      width: 100%;
-      max-height: 40vh;
-      object-fit: contain;
-      display: block;
-    }
+    #remoteVideo { width: 100%; max-height: 40vh; object-fit: contain; display: block; }
     #screenShareBanner {
-      position: absolute;
-      top: 8px;
-      left: 8px;
-      background: rgba(0,0,0,0.6);
-      color: #fff;
-      font-size: 12px;
-      padding: 4px 10px;
-      border-radius: 4px;
+      position: absolute; top: 8px; left: 8px;
+      background: rgba(0,0,0,0.6); color: #fff;
+      font-size: 12px; padding: 4px 10px; border-radius: 4px;
     }
     #closePeerVideo {
-      position: absolute;
-      top: 8px;
-      right: 8px;
-      background: rgba(0,0,0,0.6);
-      color: #fff;
-      border: none;
-      border-radius: 4px;
-      padding: 4px 10px;
-      font-size: 12px;
-      cursor: pointer;
+      position: absolute; top: 8px; right: 8px;
+      background: rgba(0,0,0,0.6); color: #fff;
+      border: none; border-radius: 4px; padding: 4px 10px;
+      font-size: 12px; cursor: pointer;
     }
+
+    /* ── Opkald ── */
+    #callBtn { padding: 6px 14px; font-size: 13px; display: none; }
+    #callBtn.active { background: var(--danger); }
+
+    #incomingCall {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    #incomingCall.visible { display: flex; }
+    #incomingCallBox {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px 40px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    #incomingCallBox p { font-size: 18px; font-weight: 600; margin: 0; }
+    #incomingCallBox .call-actions { display: flex; gap: 12px; justify-content: center; }
+
+    #activeCall {
+      display: none;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      padding: 8px 20px;
+      align-items: center;
+      gap: 16px;
+      font-size: 13px;
+    }
+    #activeCall.visible { display: flex; }
+    #callDuration { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 600; }
+    #activeCall .spacer { flex: 1; }
+    #muteBtn.muted { background: var(--danger); }
   </style>
 </head>
 <body>
@@ -95,9 +117,18 @@
       <span id="roomTitle" style="font-weight:700"></span>
       <span style="display:flex;align-items:center;gap:12px">
         <span class="user" id="navUser"></span>
+        <button id="callBtn" onclick="startCall()">Ring op</button>
         <button id="shareBtn" onclick="toggleScreenShare()">Del skærm</button>
       </span>
     </nav>
+
+    <div id="activeCall">
+      <span id="callDuration">00:00</span>
+      <span>Opkald med <strong id="callWith"></strong></span>
+      <span class="spacer"></span>
+      <button id="muteBtn" onclick="toggleMute()" style="padding:4px 12px;font-size:12px">Dæmp</button>
+      <button onclick="hangUp()" style="padding:4px 12px;font-size:12px;background:var(--danger)">Læg på</button>
+    </div>
 
     <div id="screenSharePanel">
       <video id="remoteVideo" autoplay playsinline></video>
@@ -113,6 +144,20 @@
       <button onclick="sendMessage()">Send</button>
     </div>
   </div>
+
+  <!-- Indgående opkald overlay -->
+  <div id="incomingCall">
+    <div id="incomingCallBox">
+      <p id="callerLabel">Indgående opkald</p>
+      <div class="call-actions">
+        <button onclick="acceptCall()" style="background:var(--accent)">Accepter</button>
+        <button onclick="rejectCall()" style="background:var(--danger)">Afvis</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Skjult audio-element til fjernlyden -->
+  <audio id="remoteAudio" autoplay></audio>
 
   <script src="config.js"></script>
   <script>
@@ -133,13 +178,16 @@
     document.getElementById('navUser').textContent = username || '';
     document.title = `${isDm ? '@' : '#'}${roomName} — Chat`;
 
-    if (isDm && peerId) document.getElementById('shareBtn').style.display = 'inline-block';
+    if (isDm && peerId) {
+      document.getElementById('shareBtn').style.display = 'inline-block';
+      document.getElementById('callBtn').style.display = 'inline-block';
+    }
 
     const messagesEl = document.getElementById('messages');
     const statusEl = document.getElementById('status');
     let ws;
 
-    // ── WebRTC ────────────────────────────────────────────────────────────────
+    // ── WebRTC fælles ──────────────────────────────────────────────────────────
     const ICE_SERVERS = [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun.cloudflare.com:3478' },
@@ -159,13 +207,25 @@
     }
 
     let pc = null;
-    let localStream = null;
+    let localStream = null;   // skærmdeling-stream
+    let callStream = null;    // lyd-stream
     let sharing = false;
+    let inCall = false;
+    let muted = false;
     let lastOfferTime = 0;
+    let callTimeout = null;
+    let callDurationInterval = null;
+    let ringtoneCtx = null;
+    let ringtoneInterval = null;
 
     function sendSignal(signal) {
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
       ws.send(JSON.stringify({ type: 'signal', target: peerId, signal }));
+    }
+
+    function getOrCreatePeerConnection() {
+      if (pc && pc.connectionState !== 'closed' && pc.connectionState !== 'failed') return pc;
+      return createPeerConnection();
     }
 
     function createPeerConnection() {
@@ -177,12 +237,17 @@
       };
 
       pc.ontrack = e => {
-        const panel = document.getElementById('screenSharePanel');
-        const video = document.getElementById('remoteVideo');
-        const banner = document.getElementById('screenShareBanner');
-        video.srcObject = e.streams[0];
-        banner.textContent = `${roomName} deler skærm`;
-        panel.style.display = 'block';
+        if (e.track.kind === 'audio') {
+          const audio = document.getElementById('remoteAudio');
+          if (!audio.srcObject) audio.srcObject = new MediaStream();
+          audio.srcObject.addTrack(e.track);
+        } else {
+          const panel = document.getElementById('screenSharePanel');
+          const video = document.getElementById('remoteVideo');
+          video.srcObject = e.streams[0];
+          document.getElementById('screenShareBanner').textContent = `${roomName} deler skærm`;
+          panel.style.display = 'block';
+        }
       };
 
       pc.onconnectionstatechange = () => {
@@ -194,12 +259,9 @@
       return pc;
     }
 
+    // ── Skærmdeling ───────────────────────────────────────────────────────────
     async function toggleScreenShare() {
-      if (sharing) {
-        stopScreenShare();
-      } else {
-        await startScreenShare();
-      }
+      sharing ? stopScreenShare() : await startScreenShare();
     }
 
     async function startScreenShare() {
@@ -214,10 +276,8 @@
       btn.textContent = 'Stop deling';
       btn.classList.add('active');
 
-      createPeerConnection();
+      getOrCreatePeerConnection();
       localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
-
-      // Stop sharing if user closes the browser's native share dialog
       localStream.getVideoTracks()[0].onended = () => stopScreenShare();
 
       const offer = await pc.createOffer();
@@ -230,10 +290,15 @@
     function stopScreenShare() {
       if (!sharing) return;
       sharing = false;
-      localStream?.getTracks().forEach(t => t.stop());
+
+      localStream?.getTracks().forEach(t => {
+        t.stop();
+        if (inCall && pc) {
+          const sender = pc.getSenders().find(s => s.track === t);
+          if (sender) pc.removeTrack(sender);
+        }
+      });
       localStream = null;
-      pc?.close();
-      pc = null;
 
       const btn = document.getElementById('shareBtn');
       btn.textContent = 'Del skærm';
@@ -241,33 +306,219 @@
 
       sendSignal({ type: 'stopped' });
       closePeerVideo();
+
+      if (!inCall) { pc?.close(); pc = null; }
     }
 
     function closePeerVideo(notify = false) {
       if (notify) sendSignal({ type: 'close' });
-      const panel = document.getElementById('screenSharePanel');
-      const video = document.getElementById('remoteVideo');
-      video.srcObject = null;
-      panel.style.display = 'none';
+      document.getElementById('screenSharePanel').style.display = 'none';
+      document.getElementById('remoteVideo').srcObject = null;
     }
 
     async function reinitiateOffer() {
       if (!sharing || !localStream) return;
       if (pc && pc.connectionState === 'connecting') return;
       if (Date.now() - lastOfferTime < 3000) return;
+
       createPeerConnection();
       localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+      if (inCall && callStream) callStream.getTracks().forEach(t => pc.addTrack(t, callStream));
+
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       lastOfferTime = Date.now();
       sendSignal({ type: 'offer', sdp: pc.localDescription });
     }
 
+    // ── Opkald ────────────────────────────────────────────────────────────────
+    function startRingtone() {
+      ringtoneCtx = new AudioContext();
+      let beat = 0;
+      ringtoneInterval = setInterval(() => {
+        const osc = ringtoneCtx.createOscillator();
+        const gain = ringtoneCtx.createGain();
+        osc.connect(gain);
+        gain.connect(ringtoneCtx.destination);
+        osc.frequency.value = beat % 2 === 0 ? 480 : 440;
+        gain.gain.setValueAtTime(0.25, ringtoneCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ringtoneCtx.currentTime + 0.4);
+        osc.start(ringtoneCtx.currentTime);
+        osc.stop(ringtoneCtx.currentTime + 0.4);
+        beat++;
+      }, 700);
+    }
+
+    function stopRingtone() {
+      clearInterval(ringtoneInterval);
+      ringtoneInterval = null;
+      ringtoneCtx?.close();
+      ringtoneCtx = null;
+    }
+
+    function startCallTimer() {
+      const start = Date.now();
+      const el = document.getElementById('callDuration');
+      callDurationInterval = setInterval(() => {
+        const s = Math.floor((Date.now() - start) / 1000);
+        const mm = String(Math.floor(s / 60)).padStart(2, '0');
+        const ss = String(s % 60).padStart(2, '0');
+        el.textContent = `${mm}:${ss}`;
+      }, 1000);
+    }
+
+    function showActiveCall() {
+      document.getElementById('callWith').textContent = roomName;
+      document.getElementById('activeCall').classList.add('visible');
+      startCallTimer();
+    }
+
+    function hideActiveCall() {
+      document.getElementById('activeCall').classList.remove('visible');
+      document.getElementById('callDuration').textContent = '00:00';
+      clearInterval(callDurationInterval);
+      callDurationInterval = null;
+    }
+
+    // Caller: send invite
+    function startCall() {
+      if (inCall) return;
+      sendSignal({ type: 'call-invite' });
+      document.getElementById('callBtn').textContent = 'Afbryd...';
+      document.getElementById('callBtn').classList.add('active');
+      callTimeout = setTimeout(() => {
+        sendSignal({ type: 'call-end' });
+        resetCallBtn();
+        appendSystemMsg('Intet svar');
+      }, 30000);
+    }
+
+    // Caller: received call-accept — now start WebRTC
+    async function startCallAfterAccept() {
+      clearTimeout(callTimeout);
+      callTimeout = null;
+      resetCallBtn();
+
+      try {
+        callStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch {
+        sendSignal({ type: 'call-end' });
+        return;
+      }
+
+      inCall = true;
+      getOrCreatePeerConnection();
+      callStream.getTracks().forEach(t => pc.addTrack(t, callStream));
+      showActiveCall();
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      lastOfferTime = Date.now();
+      sendSignal({ type: 'offer', sdp: pc.localDescription });
+    }
+
+    // Callee: show incoming overlay
+    function showIncomingCall() {
+      document.getElementById('callerLabel').textContent = `${roomName} ringer op`;
+      document.getElementById('incomingCall').classList.add('visible');
+      startRingtone();
+      callTimeout = setTimeout(() => {
+        rejectCall();
+        appendSystemMsg('Mistet opkald fra ' + roomName);
+      }, 30000);
+    }
+
+    // Callee: accept
+    async function acceptCall() {
+      clearTimeout(callTimeout);
+      callTimeout = null;
+      stopRingtone();
+      document.getElementById('incomingCall').classList.remove('visible');
+
+      try {
+        callStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch {
+        sendSignal({ type: 'call-reject' });
+        return;
+      }
+
+      inCall = true;
+      showActiveCall();
+      sendSignal({ type: 'call-accept' });
+      // Caller will now send an offer; callee's audio track is added in handleSignal
+    }
+
+    // Callee: reject
+    function rejectCall() {
+      clearTimeout(callTimeout);
+      callTimeout = null;
+      stopRingtone();
+      document.getElementById('incomingCall').classList.remove('visible');
+      sendSignal({ type: 'call-reject' });
+    }
+
+    function hangUp() {
+      if (!inCall) return;
+      inCall = false;
+      muted = false;
+
+      callStream?.getTracks().forEach(t => {
+        t.stop();
+        if (sharing && pc) {
+          const sender = pc.getSenders().find(s => s.track === t);
+          if (sender) pc.removeTrack(sender);
+        }
+      });
+      callStream = null;
+
+      const remoteAudio = document.getElementById('remoteAudio');
+      remoteAudio.srcObject = null;
+
+      sendSignal({ type: 'call-end' });
+      hideActiveCall();
+      resetCallBtn();
+
+      if (!sharing) { pc?.close(); pc = null; }
+    }
+
+    function toggleMute() {
+      if (!callStream) return;
+      muted = !muted;
+      callStream.getAudioTracks().forEach(t => { t.enabled = !muted; });
+      const btn = document.getElementById('muteBtn');
+      btn.textContent = muted ? 'Slå lyd til' : 'Dæmp';
+      btn.classList.toggle('muted', muted);
+    }
+
+    function resetCallBtn() {
+      const btn = document.getElementById('callBtn');
+      btn.textContent = 'Ring op';
+      btn.classList.remove('active');
+    }
+
+    function appendSystemMsg(text) {
+      const div = document.createElement('div');
+      div.className = 'system-msg';
+      div.textContent = text;
+      messagesEl.appendChild(div);
+      scrollBottom();
+    }
+
+    // ── Signal-håndtering ─────────────────────────────────────────────────────
     async function handleSignal(from, signal) {
       if (from !== peerId) return;
 
       if (signal.type === 'offer') {
-        createPeerConnection();
+        // Renegotiering hvis PC allerede er forbundet (fx tilføjelse af lyd-track)
+        const renegotiate = pc && pc.connectionState === 'connected';
+        if (!renegotiate) createPeerConnection();
+
+        // Hvis vi er i et opkald: tilføj vores lyd-track hvis det ikke allerede er der
+        if (inCall && callStream) {
+          const hasAudio = pc.getSenders().some(s => s.track?.kind === 'audio');
+          if (!hasAudio) callStream.getTracks().forEach(t => pc.addTrack(t, callStream));
+        }
+
         await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
@@ -281,10 +532,34 @@
 
       } else if (signal.type === 'stopped') {
         closePeerVideo();
-        pc?.close();
-        pc = null;
+        if (!inCall) { pc?.close(); pc = null; }
+
       } else if (signal.type === 'close') {
         stopScreenShare();
+
+      } else if (signal.type === 'call-invite') {
+        if (!inCall) showIncomingCall();
+
+      } else if (signal.type === 'call-accept') {
+        await startCallAfterAccept();
+
+      } else if (signal.type === 'call-reject') {
+        clearTimeout(callTimeout);
+        callTimeout = null;
+        resetCallBtn();
+        appendSystemMsg(roomName + ' afviste opkaldet');
+
+      } else if (signal.type === 'call-end') {
+        stopRingtone();
+        document.getElementById('incomingCall').classList.remove('visible');
+        inCall = false;
+        muted = false;
+        callStream?.getTracks().forEach(t => t.stop());
+        callStream = null;
+        document.getElementById('remoteAudio').srcObject = null;
+        hideActiveCall();
+        resetCallBtn();
+        if (!sharing) { pc?.close(); pc = null; }
       }
     }
 
@@ -295,10 +570,7 @@
 
     function appendMessage({ type, user, content, created_at }) {
       if (type === 'join' || type === 'leave') {
-        const div = document.createElement('div');
-        div.className = 'system-msg';
-        div.textContent = type === 'join' ? `${user} kom ind i rummet` : `${user} forlod rummet`;
-        messagesEl.appendChild(div);
+        appendSystemMsg(type === 'join' ? `${user} kom ind i rummet` : `${user} forlod rummet`);
       } else if (type === 'message') {
         const div = document.createElement('div');
         div.className = 'msg' + (user === username ? ' own' : '');
@@ -308,8 +580,8 @@
           <div class="bubble">${escapeHtml(content)}</div>
         `;
         messagesEl.appendChild(div);
+        scrollBottom();
       }
-      scrollBottom();
     }
 
     function escapeHtml(str) {
@@ -349,6 +621,7 @@
 
       ws.onclose = () => {
         stopScreenShare();
+        hangUp();
         statusEl.textContent = 'Forbindelsen mistet — forsøger igen...';
         setTimeout(connect, 3000);
       };
