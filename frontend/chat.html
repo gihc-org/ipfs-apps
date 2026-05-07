@@ -237,6 +237,7 @@
 
     async function reinitiateOffer() {
       if (!sharing || !localStream) return;
+      if (pc && ['connected', 'connecting'].includes(pc.connectionState)) return;
       createPeerConnection();
       localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
       const offer = await pc.createOffer();
