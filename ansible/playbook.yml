@@ -161,3 +161,17 @@
           {{ postgres_db }}
           {{ project_dir }}
       changed_when: false
+
+    - name: Run OWASP ZAP baseline scan
+      ansible.builtin.command:
+        cmd: >
+          docker run --rm
+          ghcr.io/zaproxy/zaproxy:stable
+          zap-baseline.py -t {{ base_url }} -I
+      register: zap_result
+      changed_when: false
+      failed_when: zap_result.rc > 1
+
+    - name: Show ZAP scan summary
+      ansible.builtin.debug:
+        msg: "{{ zap_result.stdout_lines[-10:] }}"

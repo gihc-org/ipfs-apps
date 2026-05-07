@@ -32,21 +32,15 @@ Forventet resultat: mindst A baseret på de headers vi tilføjede i commit c09b5
 
 ### 2. OWASP ZAP — dynamisk scanning mod kørende app
 
-Passiv baseline-scan (ingen destruktive tests, velegnet til CI):
+- [x] Passiv baseline-scan integreret i `ansible/playbook.yml` — kører automatisk efter smoke test ved hvert deploy (`ghcr.io/zaproxy/zaproxy:stable`, fejler ved FAIL-level alerts)
+- [ ] Fuld scan (aggressiv) — kræver testmiljø, se punkt nedenfor
+
+Fuld scan køres manuelt mod testmiljø når det er opsat:
 
 ```bash
-docker run -t owasp/zap2docker-stable zap-baseline.py \
-  -t https://api.gihc.online
+docker run --rm ghcr.io/zaproxy/zaproxy:stable \
+  zap-full-scan.py -t https://<testmiljø-url>
 ```
-
-Fuld scan (mere aggressiv — kør kun mod testmiljø):
-
-```bash
-docker run -t owasp/zap2docker-stable zap-full-scan.py \
-  -t https://api.gihc.online
-```
-
-Overvej at tilføje baseline-scan som task i `ansible/playbook.yml` efter deploy.
 
 ### 3. cargo audit — dependency-scanning
 
