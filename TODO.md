@@ -93,6 +93,12 @@ Projektet gemmer persondata (email, brugernavn) på EU-borgere. Se ADR-0014.
 - [x] **Rejoin** — sharer sender automatisk nyt offer når peer vender tilbage til DM-rum
 - [ ] **Frontend**: disable "Del skærm"-knappen når peeren ikke er online (track tilstedeværelse via WS `join`/`leave`-beskeder eller heartbeat)
 
+### Beslutninger der mangler afklaring
+
+- [ ] **Modtager-notifikation**: skal der vises en synlig notifikation ("X deler sin skærm") når skærmdeling starter, så modtageren ikke overser videoen?
+- [ ] **TURN-fejlhåndtering**: skal brugeren have en besked hvis TURN-serveren er nede og forbindelsen fejler, frem for stille at falde tilbage til STUN (som kan fejle bag NAT)?
+- [ ] **TURN-credential TTL**: credentials udløber efter 24 timer — skal siden automatisk forny dem (re-kalde `addTurnServer()` og genstarte `RTCPeerConnection`), eller er en reload-besked til brugeren nok?
+
 ### Fase 2 — Gruppe-huddles (fremtidig)
 
 - [ ] Ny ADR for gruppe-topologi (mesh vs. SFU)
