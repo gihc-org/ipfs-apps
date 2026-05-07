@@ -102,7 +102,7 @@
     <div id="screenSharePanel">
       <video id="remoteVideo" autoplay playsinline></video>
       <span id="screenShareBanner">Deler skærm</span>
-      <button id="closePeerVideo" onclick="closePeerVideo()">✕</button>
+      <button id="closePeerVideo" onclick="closePeerVideo(true)">✕</button>
     </div>
 
     <div id="status">Forbinder...</div>
@@ -243,7 +243,8 @@
       closePeerVideo();
     }
 
-    function closePeerVideo() {
+    function closePeerVideo(notify = false) {
+      if (notify) sendSignal({ type: 'close' });
       const panel = document.getElementById('screenSharePanel');
       const video = document.getElementById('remoteVideo');
       video.srcObject = null;
@@ -282,6 +283,8 @@
         closePeerVideo();
         pc?.close();
         pc = null;
+      } else if (signal.type === 'close') {
+        stopScreenShare();
       }
     }
 
