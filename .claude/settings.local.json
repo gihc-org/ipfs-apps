@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -sI \"https://challenges.cloudflare.com/turnstile/v0/api.js\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(ssh *)",
+      "Bash(curl *)",
+      "WebSearch",
+      "WebFetch(domain:api.simply.com)"
+    ]
+  }
+}

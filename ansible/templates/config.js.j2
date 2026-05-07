@@ -1,6 +1,5 @@
-const API_URL = '{{ base_url }}';
-const WS_URL  = '{{ base_url | replace("https://", "wss://") }}';
+const API_URL      = '{{ base_url }}';
+const WS_URL       = '{{ base_url | replace("https://", "wss://") }}';
 const TURNSTILE_SITE_KEY = '0x4AAAAAADGNo0oBcHv1zRl3';
-const TURN_URL        = 'turn:{{ vps_ip }}:3478';
-const TURN_USERNAME   = '{{ turn_username }}';
-const TURN_CREDENTIAL = '{{ vault_turn_password }}';
+const TURN_URL     = 'turn:{{ vps_ip }}:3478';
+const TURN_SECRET  = '{{ vault_turn_secret }}';

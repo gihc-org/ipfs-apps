@@ -144,8 +144,18 @@
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun.cloudflare.com:3478' },
     ];
-    if (typeof TURN_URL !== 'undefined') {
-      ICE_SERVERS.push({ urls: TURN_URL, username: TURN_USERNAME, credential: TURN_CREDENTIAL });
+
+    async function addTurnServer() {
+      if (typeof TURN_URL === 'undefined' || typeof TURN_SECRET === 'undefined') return;
+      const expires = Math.floor(Date.now() / 1000) + 86400;
+      const username = String(expires);
+      const key = await crypto.subtle.importKey(
+        'raw', new TextEncoder().encode(TURN_SECRET),
+        { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']
+      );
+      const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(username));
+      const credential = btoa(String.fromCharCode(...new Uint8Array(sig)));
+      ICE_SERVERS.push({ urls: TURN_URL, username, credential });
     }
 
     let pc = null;
@@ -352,6 +362,7 @@
     });
 
     (async () => {
+      await addTurnServer();
       await loadHistory();
       connect();
     })();
