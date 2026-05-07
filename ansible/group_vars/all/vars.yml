@@ -10,3 +10,5 @@ project_dir: /opt/chat
 base_url: "https://api.gihc.online"
 frontend_url: "https://chat.apps.gihc.online"
 resend_from: "noreply@gihc.online"
+vps_ip: "65.109.233.92"
+turn_username: "turn"

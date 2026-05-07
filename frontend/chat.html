@@ -144,6 +144,9 @@
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun.cloudflare.com:3478' },
     ];
+    if (typeof TURN_URL !== 'undefined') {
+      ICE_SERVERS.push({ urls: TURN_URL, username: TURN_USERNAME, credential: TURN_CREDENTIAL });
+    }
 
     let pc = null;
     let localStream = null;

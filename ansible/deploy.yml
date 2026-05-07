@@ -54,6 +54,12 @@
       delay: 5
       until: ipfs_ready.rc == 0
 
+    - name: Write config.js with TURN credentials
+      ansible.builtin.template:
+        src: templates/config.js.j2
+        dest: "{{ project_dir }}/frontend/config.js"
+        mode: "0644"
+
     - name: Add frontend to IPFS
       ansible.builtin.command:
         cmd: docker compose -f docker-compose.yml exec -T ipfs ipfs add -r /frontend/ -Q
