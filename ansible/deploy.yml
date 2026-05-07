@@ -113,6 +113,14 @@
       ansible.builtin.debug:
         msg: "Frontend CID: {{ ipfs_cid.stdout | trim }} — _dnslink.{{ frontend_domain }} opdateret automatisk"
 
+    - name: Verify frontend CID is live
+      ansible.builtin.uri:
+        url: "https://{{ frontend_domain }}/chat.html"
+      register: frontend_verify
+      retries: 12
+      delay: 10
+      until: ipfs_cid.stdout | trim in (frontend_verify.x_ipfs_roots | default(''))
+
     - name: Wait for API to be ready
       ansible.builtin.uri:
         url: "{{ base_url }}/auth/me"
