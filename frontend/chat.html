@@ -235,6 +235,15 @@
       panel.style.display = 'none';
     }
 
+    async function reinitiateOffer() {
+      if (!sharing || !localStream) return;
+      createPeerConnection();
+      localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      sendSignal({ type: 'offer', sdp: pc.localDescription });
+    }
+
     async function handleSignal(from, signal) {
       if (from !== peerId) return;
 
@@ -310,6 +319,9 @@
         if (data.type === 'signal') {
           handleSignal(data.from, data.signal);
         } else {
+          if (data.type === 'join' && isDm && sharing && data.user === roomName) {
+            setTimeout(reinitiateOffer, 500);
+          }
           appendMessage(data);
         }
       };
