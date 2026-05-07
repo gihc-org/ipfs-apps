@@ -9,6 +9,7 @@
 - [ ] Konfigurer cron-job i Woodpecker UI (fx hvert 10. minut) som pull-mekanisme
 - [ ] Valgfrit: tilføj webhook fra GitHub til Pi for øjeblikkelig deploy ved push
 - [ ] Kør `e2e/` Playwright-tests i pipeline før deploy (kræver Chromium i CI-image)
+- [ ] Opsæt staging-/testmiljø (separat VPS eller Docker Compose lokalt på Pi) som forudsætning for fuld OWASP ZAP-scan og Playwright e2e i CI — uden testmiljø kan aggressiv scanning og browser-tests ikke køre mod prod
 
 ### Allerede automatiseret
 
