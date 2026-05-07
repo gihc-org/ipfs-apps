@@ -109,12 +109,13 @@ Projektet gemmer persondata (email, brugernavn) på EU-borgere. Se ADR-0014.
 
 1:1 lyd- og videoopkald via WebRTC i DM-rum. Genbruger eksisterende signal-infrastruktur og TURN-server.
 
-- [ ] ADR for opkald (beslut: lyd-only vs. lyd+video, ringesignal-flow, afvis/accepter UI)
+- [ ] ADR for opkald (beslut: ringesignal-flow, afvis/accepter UI, delt RTCPeerConnection med skærmdeling)
 - [ ] **Ringesignal**: ny signal-type `call-invite`/`call-accept`/`call-reject` — modtageren ser en indgående opkaldsboks med accepter/afvis
 - [ ] **Backend**: ingen ændringer forventet — signal-forwarding håndterer de nye typer uændret
-- [ ] **Frontend**: "Ring op"-knap i DM-rum (kun synlig når peer er online), `getUserMedia({ audio: true, video: false/true })`, `RTCPeerConnection` med eksisterende TURN/STUN-setup
+- [ ] **Frontend**: "Ring op"-knap i DM-rum (kun synlig når peer er online), `getUserMedia({ audio: true })`, delt `RTCPeerConnection` med skærmdeling via renegotiering
 - [ ] **Frontend**: indgående opkald vises som overlay med ringetone (Web Audio API eller `<audio>`) og accepter/afvis-knapper
-- [ ] **Frontend**: aktiv opkald-UI — dæmp mikrofon, læg på
+- [ ] **Frontend**: aktiv opkald-UI — dæmp mikrofon, læg på; kan kombineres med aktiv skærmdeling
+- [ ] **Fase 2**: kamera-video — `getUserMedia({ audio: true, video: true })`, `<video>`-element til modtager
 
 ---
 
