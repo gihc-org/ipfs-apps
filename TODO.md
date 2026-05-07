@@ -90,10 +90,10 @@ Projektet gemmer persondata (email, brugernavn) på EU-borgere. Se ADR-0014.
 
 ### Fase 1 — 1:1 skærmdeling i DM-rum
 
-- [ ] **Backend** (`src/routes/chat.rs`): viderebringe `signal`-beskeder i WS-broadcast med `from` sat til autentificeret brugers UUID; ikke gemme i database
-- [ ] **Frontend** (`frontend/chat.html`): "Del skærm"-knap i DM-rum, `getDisplayMedia()`, `RTCPeerConnection` med STUN, stop-knap
-- [ ] **Frontend**: modtager-side viser indgående stream i `<video>`-element; håndter offer/answer/ICE-candidate flow
-- [ ] **Integration test**: signal-beskeder videresendes korrekt og gemmes ikke
+- [x] **Backend** (`src/routes/chat.rs`): viderebringe `signal`-beskeder i WS-broadcast med `from` sat til autentificeret brugers UUID; ikke gemme i database
+- [x] **Frontend** (`frontend/chat.html`): "Del skærm"-knap i DM-rum, `getDisplayMedia()`, `RTCPeerConnection` med STUN, stop-knap
+- [x] **Frontend**: modtager-side viser indgående stream i `<video>`-element; håndter offer/answer/ICE-candidate flow
+- [x] **Integration test**: signal-beskeder videresendes korrekt og gemmes ikke
 
 ### Fase 2 — Gruppe-huddles (fremtidig)
 

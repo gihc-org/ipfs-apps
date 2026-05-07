@@ -108,6 +108,7 @@
       const me = await api('/auth/me').catch(() => { localStorage.clear(); location.href = 'index.html'; });
       if (!me) return;
       localStorage.setItem('username', me.username);
+      localStorage.setItem('userId', me.id);
       document.getElementById('navUser').textContent = me.username;
       await Promise.all([loadRooms(), loadDms()]);
       searchUsers('');
@@ -158,15 +159,15 @@
       const list = document.getElementById('dmList');
       if (!dms.length) { list.innerHTML = '<div class="empty">Ingen direkte beskeder endnu.</div>'; return; }
       list.innerHTML = dms.map(d => `
-        <div class="dm-card" onclick="enterDm('${d.room_id}','${escapeHtml(d.other_username)}')">
+        <div class="dm-card" onclick="enterDm('${d.room_id}','${escapeHtml(d.other_username)}','${d.other_user_id}')">
           <span class="dm-name">@ ${escapeHtml(d.other_username)}</span>
           <span style="color:var(--text-muted);font-size:12px">→</span>
         </div>
       `).join('');
     }
 
-    function enterDm(id, otherUsername) {
-      location.href = `chat.html?room_id=${id}&room_name=${encodeURIComponent(otherUsername)}&is_dm=true`;
+    function enterDm(id, otherUsername, otherUserId) {
+      location.href = `chat.html?room_id=${id}&room_name=${encodeURIComponent(otherUsername)}&is_dm=true&peer_id=${otherUserId}`;
     }
 
     function enterRoom(id, name) {
@@ -195,7 +196,7 @@
     async function startDm(userId, username) {
       try {
         const dm = await api('/dms', { method: 'POST', body: JSON.stringify({ user_id: userId }) });
-        enterDm(dm.room_id, username);
+        enterDm(dm.room_id, username, userId);
       } catch (e) {
         document.getElementById('createError').textContent = e.message;
       }
