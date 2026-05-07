@@ -105,6 +105,19 @@ Projektet gemmer persondata (email, brugernavn) på EU-borgere. Se ADR-0014.
 
 ---
 
+## WebRTC opkald i DM-rum (fremtidig)
+
+1:1 lyd- og videoopkald via WebRTC i DM-rum. Genbruger eksisterende signal-infrastruktur og TURN-server.
+
+- [ ] ADR for opkald (beslut: lyd-only vs. lyd+video, ringesignal-flow, afvis/accepter UI)
+- [ ] **Ringesignal**: ny signal-type `call-invite`/`call-accept`/`call-reject` — modtageren ser en indgående opkaldsboks med accepter/afvis
+- [ ] **Backend**: ingen ændringer forventet — signal-forwarding håndterer de nye typer uændret
+- [ ] **Frontend**: "Ring op"-knap i DM-rum (kun synlig når peer er online), `getUserMedia({ audio: true, video: false/true })`, `RTCPeerConnection` med eksisterende TURN/STUN-setup
+- [ ] **Frontend**: indgående opkald vises som overlay med ringetone (Web Audio API eller `<audio>`) og accepter/afvis-knapper
+- [ ] **Frontend**: aktiv opkald-UI — dæmp mikrofon, læg på
+
+---
+
 ## CIS Docker Benchmark
 
 Hærdning af Docker-opsætning. Se ADR-0014.
