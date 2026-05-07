@@ -133,7 +133,7 @@
     document.getElementById('navUser').textContent = username || '';
     document.title = `${isDm ? '@' : '#'}${roomName} — Chat`;
 
-    if (isDm && peerId) document.getElementById('shareBtn').style.display = '';
+    if (isDm && peerId) document.getElementById('shareBtn').style.display = 'inline-block';
 
     const messagesEl = document.getElementById('messages');
     const statusEl = document.getElementById('status');

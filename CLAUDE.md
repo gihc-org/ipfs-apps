@@ -180,6 +180,8 @@ Arkitektoniske beslutninger er dokumenteret som ADR'er i `~/projects/adrs/`. Lis
 | [0013](~/projects/adrs/0013-owasp-by-default.md) | OWASP-sikkerhed som del af definition of done |
 | [0014](~/projects/adrs/0014-gdpr-and-cis-docker.md) | GDPR og CIS Docker Benchmark |
 | [0015](~/projects/adrs/0015-gdpr-deletion-strategy-and-smoke-test.md) | GDPR-sletningstrategi og post-deploy smoke test |
+| [0016](~/projects/adrs/0016-webrtc-screen-sharing.md) | WebRTC skærmdeling via eksisterende WebSocket |
+| [0017](~/projects/adrs/0017-ansible-infra-deploy-split.md) | Opdeling af Ansible i infrastruktur og applikationsdeploy |
 
 ### Projekt-specifikke detaljer
 
