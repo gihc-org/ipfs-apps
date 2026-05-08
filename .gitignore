@@ -13,3 +13,4 @@ chat/target/
 # Screenshots
 *.png
 .aider*
+.guidelines

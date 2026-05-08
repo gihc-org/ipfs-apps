@@ -1,6 +1,13 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to AI coding agents working in this repository.
+
+## Generelle guidelines
+
+@.guidelines/security.md
+@.guidelines/rust-axum.md
+@.guidelines/webrtc.md
+@.guidelines/web-frontend.md
 
 ## Project Overview
 
