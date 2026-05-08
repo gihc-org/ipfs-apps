@@ -35,6 +35,7 @@ test('DM vises i listen efter oprettelse', async ({ browser }) => {
   await pageAlice.fill('#userSearch', bob);
   await pageAlice.locator('.user-card', { hasText: bob }).waitFor();
   await pageAlice.locator('.user-card', { hasText: bob }).locator('button').click();
+  await pageAlice.waitForURL(/chat\.html/);
 
   // Gå tilbage til rooms og tjek DM-listen
   await pageAlice.goto('/rooms.html');

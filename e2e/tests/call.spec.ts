@@ -6,6 +6,8 @@ async function newSession(browser: Browser, username: string, password: string) 
   const page = await ctx.newPage();
   await register(page, username, password);
   await login(page, username, password);
+  // rooms.html stores userId asynchronously after /auth/me — wait for it
+  await page.waitForFunction(() => !!localStorage.getItem('userId'), { timeout: 5000 });
   const token  = await page.evaluate(() => localStorage.getItem('token') ?? '');
   const userId = await page.evaluate(() => localStorage.getItem('userId') ?? '');
   return { page, token, userId };
@@ -15,7 +17,8 @@ async function openDm(page: Page, roomId: string, peerName: string, peerId: stri
   await mockConfig(page);
   const params = new URLSearchParams({ room_id: roomId, room_name: peerName, is_dm: 'true', peer_id: peerId });
   await page.goto(`/chat.html?${params}`);
-  await page.waitForSelector('#status:empty, #status', { timeout: 5000 });
+  // Wait for the WebSocket to be open (readyState OPEN = 1); use a string to bypass TypeScript scoping
+  await page.waitForFunction('typeof ws !== "undefined" && ws.readyState === 1', { timeout: 10000 });
 }
 
 test('ring op → accepter → læg på', async ({ browser }) => {
@@ -26,9 +29,11 @@ test('ring op → accepter → læg på', async ({ browser }) => {
   // Opret DM via API
   const dmRes = await alice.page.request.post(`${API_URL}/dms`, {
     headers: { Authorization: `Bearer ${alice.token}` },
-    data: { peer_id: bob.userId },
+    data: { user_id: bob.userId },
   });
-  const { id: roomId } = await dmRes.json();
+  const dmBody = await dmRes.text();
+  if (!dmRes.ok()) throw new Error(`DM POST failed ${dmRes.status()}: ${dmBody}`);
+  const { room_id: roomId } = JSON.parse(dmBody);
 
   const aliceName = await alice.page.evaluate(() => localStorage.getItem('username') ?? '');
   const bobName   = await bob.page.evaluate(()   => localStorage.getItem('username') ?? '');
@@ -65,9 +70,11 @@ test('ring op → afvis', async ({ browser }) => {
 
   const dmRes = await alice.page.request.post(`${API_URL}/dms`, {
     headers: { Authorization: `Bearer ${alice.token}` },
-    data: { peer_id: bob.userId },
+    data: { user_id: bob.userId },
   });
-  const { id: roomId } = await dmRes.json();
+  const dmBody = await dmRes.text();
+  if (!dmRes.ok()) throw new Error(`DM POST failed ${dmRes.status()}: ${dmBody}`);
+  const { room_id: roomId } = JSON.parse(dmBody);
 
   const aliceName = await alice.page.evaluate(() => localStorage.getItem('username') ?? '');
   const bobName   = await bob.page.evaluate(()   => localStorage.getItem('username') ?? '');
@@ -95,9 +102,11 @@ test('30-sekunders timeout hvis ingen svarer', async ({ browser }) => {
 
   const dmRes = await alice.page.request.post(`${API_URL}/dms`, {
     headers: { Authorization: `Bearer ${alice.token}` },
-    data: { peer_id: bob.userId },
+    data: { user_id: bob.userId },
   });
-  const { id: roomId } = await dmRes.json();
+  const dmBody = await dmRes.text();
+  if (!dmRes.ok()) throw new Error(`DM POST failed ${dmRes.status()}: ${dmBody}`);
+  const { room_id: roomId } = JSON.parse(dmBody);
 
   const aliceName = await alice.page.evaluate(() => localStorage.getItem('username') ?? '');
   const bobName   = await bob.page.evaluate(()   => localStorage.getItem('username') ?? '');
