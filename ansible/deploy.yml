@@ -168,8 +168,8 @@
       ansible.builtin.uri:
         url: "https://{{ beta_frontend_domain }}/chat.html"
       register: beta_frontend_verify
-      retries: 15
-      delay: 10
+      retries: 36
+      delay: 15
       until: beta_ipfs_cid.stdout | trim in (beta_frontend_verify.x_ipfs_roots | default(''))
 
     - name: Wait for beta API to be ready
