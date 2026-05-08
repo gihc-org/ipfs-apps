@@ -239,8 +239,13 @@
       pc.ontrack = e => {
         if (e.track.kind === 'audio') {
           const audio = document.getElementById('remoteAudio');
-          if (!audio.srcObject) audio.srcObject = new MediaStream();
-          audio.srcObject.addTrack(e.track);
+          if (e.streams[0]) {
+            audio.srcObject = e.streams[0];
+          } else {
+            if (!audio.srcObject) audio.srcObject = new MediaStream();
+            audio.srcObject.addTrack(e.track);
+          }
+          audio.play().catch(() => {});
         } else {
           const panel = document.getElementById('screenSharePanel');
           const video = document.getElementById('remoteVideo');
