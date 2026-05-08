@@ -8,6 +8,7 @@ This file provides guidance to AI coding agents working in this repository.
 @.guidelines/rust-axum.md
 @.guidelines/webrtc.md
 @.guidelines/web-frontend.md
+@.guidelines/testing-and-docs.md
 
 ## Project Overview
 
