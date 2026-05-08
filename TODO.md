@@ -1,5 +1,15 @@
 # TODO
 
+## Playwright e2e tests
+
+- [ ] Opsæt Playwright i `e2e/` med fake mikrofon/kamera (Chromium-flags)
+- [ ] Auth-test: registrering og login-flow
+- [ ] Call-test: ring op → accepter → læg på (to browser-contexts)
+- [ ] Screen share-test: del skærm → modtager ser video → stop
+- [ ] Integrer i CI-pipeline (kræver Chromium i CI-image)
+
+---
+
 ## CI/CD — Woodpecker CI på Raspberry Pi
 
 - [ ] Installer Woodpecker server + agent på Raspberry Pi via Docker Compose
