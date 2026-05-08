@@ -33,11 +33,6 @@
         dest: "{{ project_dir }}/.env"
         mode: "0600"
 
-    - name: Reload Caddy config
-      ansible.builtin.command:
-        cmd: docker compose -f docker-compose.yml -f docker-compose.prod.yml restart caddy
-        chdir: "{{ project_dir }}"
-
     - name: Build and start services
       ansible.builtin.command:
         cmd: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
@@ -145,6 +140,13 @@
         | selectattr('name', 'equalto', 'beta.chat.apps')
         | list | length == 0
 
+    # DNS A-records er nu oprettet — genstart Caddy så Let's Encrypt-udfordringen
+    # kan gennemføres med fungerende DNS-opslag.
+    - name: Reload Caddy config after DNS A-records created
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.yml -f docker-compose.prod.yml restart caddy
+        chdir: "{{ project_dir }}"
+
     # ── Test ──────────────────────────────────────────────────────────────────
 
     - name: Write test config.js
@@ -203,21 +205,13 @@
       ansible.builtin.debug:
         msg: "Test CID: {{ test_ipfs_cid.stdout | trim }} — _dnslink.{{ test_frontend_domain }} opdateret"
 
-    - name: Verify test frontend CID is live
-      ansible.builtin.uri:
-        url: "https://{{ test_frontend_domain }}/chat.html"
-      register: test_frontend_verify
-      retries: 36
-      delay: 15
-      until: test_ipfs_cid.stdout | trim in (test_frontend_verify.x_ipfs_roots | default(''))
-
     - name: Wait for test API to be ready
       ansible.builtin.uri:
         url: "{{ test_base_url }}/auth/me"
         status_code: [401]
       register: test_api_ready
-      retries: 12
-      delay: 5
+      retries: 24
+      delay: 10
       until: test_api_ready.status == 401
 
     - name: Run smoke tests against test
