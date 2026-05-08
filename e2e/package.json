@@ -4,6 +4,7 @@
   "scripts": {
     "postinstall": "node scripts/install-browsers.js",
     "test": "playwright test",
+    "test:beta": "BASE_URL=https://beta.chat.apps.gihc.online TEST_API_URL=https://beta.api.gihc.online/v1 playwright test",
     "test:headed": "playwright test --headed",
     "test:ui": "playwright test --ui"
   },
