@@ -610,6 +610,7 @@
 
       ws.onopen = () => {
         statusEl.textContent = 'Forbundet';
+        document.body.dataset.wsConnected = '';
         setTimeout(() => { statusEl.textContent = ''; }, 2000);
       };
 

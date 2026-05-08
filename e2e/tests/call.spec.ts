@@ -17,8 +17,8 @@ async function openDm(page: Page, roomId: string, peerName: string, peerId: stri
   await mockConfig(page);
   const params = new URLSearchParams({ room_id: roomId, room_name: peerName, is_dm: 'true', peer_id: peerId });
   await page.goto(`/chat.html?${params}`);
-  // Wait for the WebSocket to be open (readyState OPEN = 1); use a string to bypass TypeScript scoping
-  await page.waitForFunction('typeof ws !== "undefined" && ws.readyState === 1', { timeout: 10000 });
+  // Wait for WS open — chat.html sets data-ws-connected on body in ws.onopen
+  await page.waitForSelector('body[data-ws-connected]', { timeout: 10000 });
 }
 
 test('ring op → accepter → læg på', async ({ browser }) => {

@@ -18,6 +18,8 @@ test('duplikeret rum giver fejlbesked', async ({ page }) => {
   const roomName = `rum-${Date.now()}`;
   await page.fill('#roomName', roomName);
   await page.click('button:has-text("Opret")');
+  // Vent på at første rum er oprettet før vi prøver at oprette det igen
+  await page.locator('.room-card', { hasText: roomName }).waitFor();
   await page.fill('#roomName', roomName);
   await page.click('button:has-text("Opret")');
   await expect(page.locator('#createError')).not.toBeEmpty();
