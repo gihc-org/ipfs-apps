@@ -40,7 +40,7 @@ IPFS frontend (DNSLink → chat.apps.gihc.online)
 - **Framework:** Axum 0.7 with `ws` feature
 - **Database:** SQLx 0.8 + PostgreSQL (runtime API, not compile-time `query!` macro)
 - **Auth:** Argon2id password hashing, JWT via `jsonwebtoken` (HS256)
-- **Email verification:** Required before login — Resend API sends a link to `GET /auth/verify?token=<uuid>`
+- **Email verification:** Required before login — Resend API sends a link to `GET /v1/auth/verify?token=<uuid>`
 - **CAPTCHA:** Cloudflare Turnstile on registration — `chat/src/captcha.rs` validates against `https://challenges.cloudflare.com/turnstile/v0/siteverify` (v0, not v1)
 - **External HTTP:** `reqwest 0.12` with `rustls-tls` feature — client stored in `AppState.http`
 - **WebSocket:** one `tokio::sync::broadcast` channel per room, stored in `AppState.rooms: RoomMap`
@@ -67,14 +67,17 @@ IPFS frontend (DNSLink → chat.apps.gihc.online)
 #### API surface
 | Method | Path | Auth |
 |--------|------|------|
-| POST | /auth/register | — |
-| POST | /auth/token | — |
-| GET | /auth/me | Bearer |
-| GET | /auth/verify?token=\<uuid\> | — |
-| GET | /rooms | Bearer |
-| POST | /rooms | Bearer |
-| GET | /rooms/:id/messages | Bearer |
-| WS | /ws/:room_id?token=\<jwt\> | query param |
+| POST | /v1/auth/register | — |
+| POST | /v1/auth/token | — |
+| GET | /v1/auth/me | Bearer |
+| GET | /v1/auth/verify?token=\<uuid\> | — |
+| GET | /v1/rooms | Bearer |
+| POST | /v1/rooms | Bearer |
+| GET | /v1/rooms/:id/messages | Bearer |
+| GET | /v1/users | Bearer |
+| GET | /v1/dms | Bearer |
+| POST | /v1/dms | Bearer |
+| WS | /v1/ws/:room_id?token=\<jwt\> | query param |
 
 #### Auth
 `auth::authenticate(&state, &headers).await?` validates the Bearer token and returns the `User`. Call it at the top of any handler that requires authentication.

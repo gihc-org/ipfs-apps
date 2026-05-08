@@ -43,7 +43,7 @@ async fn ws_connect(
     futures::stream::SplitSink<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, WsMessage>,
     futures::stream::SplitStream<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>>,
 ) {
-    let url = format!("ws://{}/ws/{}?token={}", addr, room_id, token);
+    let url = format!("ws://{}/v1/ws/{}?token={}", addr, room_id, token);
     let (ws, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
     ws.split()
 }
@@ -103,7 +103,7 @@ async fn register_and_login(app: &axum::Router, username: &str, password: &str) 
     api(
         app,
         "POST",
-        "/auth/register",
+        "/v1/auth/register",
         None,
         Some(json!({"username": username, "password": password, "email": email, "turnstile_token": "test"})),
     )
@@ -111,7 +111,7 @@ async fn register_and_login(app: &axum::Router, username: &str, password: &str) 
     let (_, body) = api(
         app,
         "POST",
-        "/auth/token",
+        "/v1/auth/token",
         None,
         Some(json!({"username": username, "password": password})),
     )
@@ -127,7 +127,7 @@ async fn register_success(pool: PgPool) {
     let (status, body) = api(
         &app,
         "POST",
-        "/auth/register",
+        "/v1/auth/register",
         None,
         Some(json!({"username": "alice", "password": "password123", "email": "alice@test.example", "turnstile_token": "test"})),
     )
@@ -140,11 +140,11 @@ async fn register_success(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn register_duplicate_username(pool: PgPool) {
     let app = build_app(test_state(pool));
-    api(&app, "POST", "/auth/register", None, Some(json!({"username": "alice", "password": "password123", "email": "alice@test.example", "turnstile_token": "test"}))).await;
+    api(&app, "POST", "/v1/auth/register", None, Some(json!({"username": "alice", "password": "password123", "email": "alice@test.example", "turnstile_token": "test"}))).await;
     let (status, body) = api(
         &app,
         "POST",
-        "/auth/register",
+        "/v1/auth/register",
         None,
         Some(json!({"username": "alice", "password": "different1", "email": "alice2@test.example", "turnstile_token": "test"})),
     )
@@ -158,11 +158,11 @@ async fn register_duplicate_username(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn login_success(pool: PgPool) {
     let app = build_app(test_state(pool));
-    api(&app, "POST", "/auth/register", None, Some(json!({"username": "bob", "password": "password123", "email": "bob@test.example", "turnstile_token": "test"}))).await;
+    api(&app, "POST", "/v1/auth/register", None, Some(json!({"username": "bob", "password": "password123", "email": "bob@test.example", "turnstile_token": "test"}))).await;
     let (status, body) = api(
         &app,
         "POST",
-        "/auth/token",
+        "/v1/auth/token",
         None,
         Some(json!({"username": "bob", "password": "password123"})),
     )
@@ -175,11 +175,11 @@ async fn login_success(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn login_wrong_password(pool: PgPool) {
     let app = build_app(test_state(pool));
-    api(&app, "POST", "/auth/register", None, Some(json!({"username": "carol", "password": "password123", "email": "carol@test.example", "turnstile_token": "test"}))).await;
+    api(&app, "POST", "/v1/auth/register", None, Some(json!({"username": "carol", "password": "password123", "email": "carol@test.example", "turnstile_token": "test"}))).await;
     let (status, _) = api(
         &app,
         "POST",
-        "/auth/token",
+        "/v1/auth/token",
         None,
         Some(json!({"username": "carol", "password": "wrong"})),
     )
@@ -193,7 +193,7 @@ async fn login_unknown_user(pool: PgPool) {
     let (status, _) = api(
         &app,
         "POST",
-        "/auth/token",
+        "/v1/auth/token",
         None,
         Some(json!({"username": "nobody", "password": "pw"})),
     )
@@ -207,7 +207,7 @@ async fn login_unknown_user(pool: PgPool) {
 async fn me_returns_current_user(pool: PgPool) {
     let app = build_app(test_state(pool));
     let token = register_and_login(&app,"dave", "password").await;
-    let (status, body) = api(&app, "GET", "/auth/me", Some(&token), None).await;
+    let (status, body) = api(&app, "GET", "/v1/auth/me", Some(&token), None).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["username"], "dave");
     assert!(body["email"].is_string());
@@ -219,10 +219,10 @@ async fn me_returns_current_user(pool: PgPool) {
 async fn delete_me_removes_account(pool: PgPool) {
     let app = build_app(test_state(pool));
     let token = register_and_login(&app,"todelete", "password").await;
-    let (status, _) = api(&app, "DELETE", "/auth/me", Some(&token), None).await;
+    let (status, _) = api(&app, "DELETE", "/v1/auth/me", Some(&token), None).await;
     assert_eq!(status, StatusCode::NO_CONTENT);
     // Token is now invalid — account is gone
-    let (status, _) = api(&app, "GET", "/auth/me", Some(&token), None).await;
+    let (status, _) = api(&app, "GET", "/v1/auth/me", Some(&token), None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
@@ -231,14 +231,14 @@ async fn delete_me_removes_dm_rooms(pool: PgPool) {
     let app = build_app(test_state(pool));
     let token_a = register_and_login(&app,"alice", "password").await;
     let token_b = register_and_login(&app,"bob", "password").await;
-    let (_, user_b) = api(&app, "GET", "/auth/me", Some(&token_b), None).await;
-    api(&app, "POST", "/dms", Some(&token_a),
+    let (_, user_b) = api(&app, "GET", "/v1/auth/me", Some(&token_b), None).await;
+    api(&app, "POST", "/v1/dms", Some(&token_a),
         Some(json!({"user_id": user_b["id"]}))).await;
 
-    api(&app, "DELETE", "/auth/me", Some(&token_a), None).await;
+    api(&app, "DELETE", "/v1/auth/me", Some(&token_a), None).await;
 
     // Bob's DM list should now be empty
-    let (status, body) = api(&app, "GET", "/dms", Some(&token_b), None).await;
+    let (status, body) = api(&app, "GET", "/v1/dms", Some(&token_b), None).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body.as_array().unwrap().len(), 0);
 }
@@ -246,21 +246,21 @@ async fn delete_me_removes_dm_rooms(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn delete_me_requires_auth(pool: PgPool) {
     let app = build_app(test_state(pool));
-    let (status, _) = api(&app, "DELETE", "/auth/me", None, None).await;
+    let (status, _) = api(&app, "DELETE", "/v1/auth/me", None, None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
 #[sqlx::test(migrations = "./migrations")]
 async fn me_without_token(pool: PgPool) {
     let app = build_app(test_state(pool));
-    let (status, _) = api(&app, "GET", "/auth/me", None, None).await;
+    let (status, _) = api(&app, "GET", "/v1/auth/me", None, None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
 #[sqlx::test(migrations = "./migrations")]
 async fn me_with_invalid_token(pool: PgPool) {
     let app = build_app(test_state(pool));
-    let (status, _) = api(&app, "GET", "/auth/me", Some("not.a.jwt"), None).await;
+    let (status, _) = api(&app, "GET", "/v1/auth/me", Some("not.a.jwt"), None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
@@ -269,7 +269,7 @@ async fn me_with_invalid_token(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn list_rooms_requires_auth(pool: PgPool) {
     let app = build_app(test_state(pool));
-    let (status, _) = api(&app, "GET", "/rooms", None, None).await;
+    let (status, _) = api(&app, "GET", "/v1/rooms", None, None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
@@ -277,7 +277,7 @@ async fn list_rooms_requires_auth(pool: PgPool) {
 async fn list_rooms_empty(pool: PgPool) {
     let app = build_app(test_state(pool));
     let token = register_and_login(&app,"eve", "password").await;
-    let (status, body) = api(&app, "GET", "/rooms", Some(&token), None).await;
+    let (status, body) = api(&app, "GET", "/v1/rooms", Some(&token), None).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body, json!([]));
 }
@@ -289,7 +289,7 @@ async fn create_room_success(pool: PgPool) {
     let (status, body) = api(
         &app,
         "POST",
-        "/rooms",
+        "/v1/rooms",
         Some(&token),
         Some(json!({"name": "general"})),
     )
@@ -303,11 +303,11 @@ async fn create_room_success(pool: PgPool) {
 async fn create_room_duplicate(pool: PgPool) {
     let app = build_app(test_state(pool));
     let token = register_and_login(&app,"grace", "password").await;
-    api(&app, "POST", "/rooms", Some(&token), Some(json!({"name": "lobby"}))).await;
+    api(&app, "POST", "/v1/rooms", Some(&token), Some(json!({"name": "lobby"}))).await;
     let (status, body) = api(
         &app,
         "POST",
-        "/rooms",
+        "/v1/rooms",
         Some(&token),
         Some(json!({"name": "lobby"})),
     )
@@ -319,7 +319,7 @@ async fn create_room_duplicate(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn create_room_requires_auth(pool: PgPool) {
     let app = build_app(test_state(pool));
-    let (status, _) = api(&app, "POST", "/rooms", None, Some(json!({"name": "secret"}))).await;
+    let (status, _) = api(&app, "POST", "/v1/rooms", None, Some(json!({"name": "secret"}))).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
@@ -327,9 +327,9 @@ async fn create_room_requires_auth(pool: PgPool) {
 async fn list_rooms_shows_created_rooms(pool: PgPool) {
     let app = build_app(test_state(pool));
     let token = register_and_login(&app,"henry", "password").await;
-    api(&app, "POST", "/rooms", Some(&token), Some(json!({"name": "alpha"}))).await;
-    api(&app, "POST", "/rooms", Some(&token), Some(json!({"name": "beta"}))).await;
-    let (status, body) = api(&app, "GET", "/rooms", Some(&token), None).await;
+    api(&app, "POST", "/v1/rooms", Some(&token), Some(json!({"name": "alpha"}))).await;
+    api(&app, "POST", "/v1/rooms", Some(&token), Some(json!({"name": "beta"}))).await;
+    let (status, body) = api(&app, "GET", "/v1/rooms", Some(&token), None).await;
     assert_eq!(status, StatusCode::OK);
     let rooms = body.as_array().unwrap();
     assert_eq!(rooms.len(), 2);
@@ -347,13 +347,13 @@ async fn messages_empty_for_new_room(pool: PgPool) {
     let (_, room) = api(
         &app,
         "POST",
-        "/rooms",
+        "/v1/rooms",
         Some(&token),
         Some(json!({"name": "empty-room"})),
     )
     .await;
     let room_id = room["id"].as_str().unwrap();
-    let (status, body) = api(&app, "GET", &format!("/rooms/{room_id}/messages"), Some(&token), None).await;
+    let (status, body) = api(&app, "GET", &format!("/v1/rooms/{room_id}/messages"), Some(&token), None).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body, json!([]));
 }
@@ -365,13 +365,13 @@ async fn messages_requires_auth(pool: PgPool) {
     let (_, room) = api(
         &app,
         "POST",
-        "/rooms",
+        "/v1/rooms",
         Some(&token),
         Some(json!({"name": "private"})),
     )
     .await;
     let room_id = room["id"].as_str().unwrap();
-    let (status, _) = api(&app, "GET", &format!("/rooms/{room_id}/messages"), None, None).await;
+    let (status, _) = api(&app, "GET", &format!("/v1/rooms/{room_id}/messages"), None, None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
@@ -382,7 +382,7 @@ async fn list_users_excludes_self(pool: PgPool) {
     let app = build_app(test_state(pool));
     let token = register_and_login(&app,"alice", "password").await;
     register_and_login(&app,"bob", "password").await;
-    let (status, body) = api(&app, "GET", "/users", Some(&token), None).await;
+    let (status, body) = api(&app, "GET", "/v1/users", Some(&token), None).await;
     assert_eq!(status, StatusCode::OK);
     let users = body.as_array().unwrap();
     assert_eq!(users.len(), 1);
@@ -405,7 +405,7 @@ async fn search_users_finds_by_substring(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn list_users_requires_auth(pool: PgPool) {
     let app = build_app(test_state(pool));
-    let (status, _) = api(&app, "GET", "/users", None, None).await;
+    let (status, _) = api(&app, "GET", "/v1/users", None, None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
@@ -416,10 +416,10 @@ async fn create_dm_returns_room(pool: PgPool) {
     let app = build_app(test_state(pool));
     let token_a = register_and_login(&app,"alice", "password").await;
     let token_b = register_and_login(&app,"bob", "password").await;
-    let (_, user_b) = api(&app, "GET", "/auth/me", Some(&token_b), None).await;
+    let (_, user_b) = api(&app, "GET", "/v1/auth/me", Some(&token_b), None).await;
     let bob_id = user_b["id"].as_str().unwrap();
 
-    let (status, body) = api(&app, "POST", "/dms", Some(&token_a),
+    let (status, body) = api(&app, "POST", "/v1/dms", Some(&token_a),
         Some(json!({"user_id": bob_id}))).await;
     assert_eq!(status, StatusCode::OK);
     assert!(body["room_id"].is_string());
@@ -431,15 +431,15 @@ async fn dm_is_idempotent(pool: PgPool) {
     let app = build_app(test_state(pool));
     let token_a = register_and_login(&app,"alice", "password").await;
     let token_b = register_and_login(&app,"bob", "password").await;
-    let (_, user_a) = api(&app, "GET", "/auth/me", Some(&token_a), None).await;
-    let (_, user_b) = api(&app, "GET", "/auth/me", Some(&token_b), None).await;
+    let (_, user_a) = api(&app, "GET", "/v1/auth/me", Some(&token_a), None).await;
+    let (_, user_b) = api(&app, "GET", "/v1/auth/me", Some(&token_b), None).await;
     let alice_id = user_a["id"].as_str().unwrap();
     let bob_id = user_b["id"].as_str().unwrap();
 
-    let (_, dm1) = api(&app, "POST", "/dms", Some(&token_a),
+    let (_, dm1) = api(&app, "POST", "/v1/dms", Some(&token_a),
         Some(json!({"user_id": bob_id}))).await;
     // Bob creates DM with Alice — same room
-    let (_, dm2) = api(&app, "POST", "/dms", Some(&token_b),
+    let (_, dm2) = api(&app, "POST", "/v1/dms", Some(&token_b),
         Some(json!({"user_id": alice_id}))).await;
     assert_eq!(dm1["room_id"], dm2["room_id"]);
 }
@@ -448,8 +448,8 @@ async fn dm_is_idempotent(pool: PgPool) {
 async fn cannot_dm_self(pool: PgPool) {
     let app = build_app(test_state(pool));
     let token = register_and_login(&app,"alice", "password").await;
-    let (_, me) = api(&app, "GET", "/auth/me", Some(&token), None).await;
-    let (status, _) = api(&app, "POST", "/dms", Some(&token),
+    let (_, me) = api(&app, "GET", "/v1/auth/me", Some(&token), None).await;
+    let (status, _) = api(&app, "POST", "/v1/dms", Some(&token),
         Some(json!({"user_id": me["id"]}))).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
@@ -458,7 +458,7 @@ async fn cannot_dm_self(pool: PgPool) {
 async fn cannot_dm_nonexistent_user(pool: PgPool) {
     let app = build_app(test_state(pool));
     let token = register_and_login(&app,"alice", "password").await;
-    let (status, _) = api(&app, "POST", "/dms", Some(&token),
+    let (status, _) = api(&app, "POST", "/v1/dms", Some(&token),
         Some(json!({"user_id": "00000000-0000-0000-0000-000000000000"}))).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
@@ -468,12 +468,12 @@ async fn list_dms_shows_conversations(pool: PgPool) {
     let app = build_app(test_state(pool));
     let token_a = register_and_login(&app,"alice", "password").await;
     let token_b = register_and_login(&app,"bob", "password").await;
-    let (_, user_b) = api(&app, "GET", "/auth/me", Some(&token_b), None).await;
+    let (_, user_b) = api(&app, "GET", "/v1/auth/me", Some(&token_b), None).await;
 
-    api(&app, "POST", "/dms", Some(&token_a),
+    api(&app, "POST", "/v1/dms", Some(&token_a),
         Some(json!({"user_id": user_b["id"]}))).await;
 
-    let (status, body) = api(&app, "GET", "/dms", Some(&token_a), None).await;
+    let (status, body) = api(&app, "GET", "/v1/dms", Some(&token_a), None).await;
     assert_eq!(status, StatusCode::OK);
     let dms = body.as_array().unwrap();
     assert_eq!(dms.len(), 1);
@@ -485,7 +485,7 @@ async fn list_dms_shows_conversations(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn list_dms_requires_auth(pool: PgPool) {
     let app = build_app(test_state(pool));
-    let (status, _) = api(&app, "GET", "/dms", None, None).await;
+    let (status, _) = api(&app, "GET", "/v1/dms", None, None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
@@ -497,14 +497,14 @@ async fn rooms_list_excludes_dm_rooms(pool: PgPool) {
     let token_a = register_and_login(&app,"alice", "password").await;
     let token_b = register_and_login(&app,"bob", "password").await;
 
-    api(&app, "POST", "/rooms", Some(&token_a),
+    api(&app, "POST", "/v1/rooms", Some(&token_a),
         Some(json!({"name": "public"}))).await;
 
-    let (_, user_b) = api(&app, "GET", "/auth/me", Some(&token_b), None).await;
-    api(&app, "POST", "/dms", Some(&token_a),
+    let (_, user_b) = api(&app, "GET", "/v1/auth/me", Some(&token_b), None).await;
+    api(&app, "POST", "/v1/dms", Some(&token_a),
         Some(json!({"user_id": user_b["id"]}))).await;
 
-    let (status, body) = api(&app, "GET", "/rooms", Some(&token_a), None).await;
+    let (status, body) = api(&app, "GET", "/v1/rooms", Some(&token_a), None).await;
     assert_eq!(status, StatusCode::OK);
     let rooms = body.as_array().unwrap();
     assert_eq!(rooms.len(), 1);
@@ -518,13 +518,13 @@ async fn non_member_cannot_read_dm_messages(pool: PgPool) {
     let token_b = register_and_login(&app,"bob", "password").await;
     let token_c = register_and_login(&app,"carol", "password").await;
 
-    let (_, user_b) = api(&app, "GET", "/auth/me", Some(&token_b), None).await;
-    let (_, dm) = api(&app, "POST", "/dms", Some(&token_a),
+    let (_, user_b) = api(&app, "GET", "/v1/auth/me", Some(&token_b), None).await;
+    let (_, dm) = api(&app, "POST", "/v1/dms", Some(&token_a),
         Some(json!({"user_id": user_b["id"]}))).await;
     let room_id = dm["room_id"].as_str().unwrap();
 
     let (status, _) = api(&app, "GET",
-        &format!("/rooms/{room_id}/messages"), Some(&token_c), None).await;
+        &format!("/v1/rooms/{room_id}/messages"), Some(&token_c), None).await;
     assert_eq!(status, StatusCode::FORBIDDEN);
 }
 
@@ -534,14 +534,14 @@ async fn member_can_read_dm_messages(pool: PgPool) {
     let token_a = register_and_login(&app,"alice", "password").await;
     let token_b = register_and_login(&app,"bob", "password").await;
 
-    let (_, user_b) = api(&app, "GET", "/auth/me", Some(&token_b), None).await;
-    let (_, dm) = api(&app, "POST", "/dms", Some(&token_a),
+    let (_, user_b) = api(&app, "GET", "/v1/auth/me", Some(&token_b), None).await;
+    let (_, dm) = api(&app, "POST", "/v1/dms", Some(&token_a),
         Some(json!({"user_id": user_b["id"]}))).await;
     let room_id = dm["room_id"].as_str().unwrap();
 
     // Bob, the other member, can read messages
     let (status, body) = api(&app, "GET",
-        &format!("/rooms/{room_id}/messages"), Some(&token_b), None).await;
+        &format!("/v1/rooms/{room_id}/messages"), Some(&token_b), None).await;
     assert_eq!(status, StatusCode::OK);
     assert!(body.is_array());
 }
@@ -552,8 +552,8 @@ async fn concurrent_dm_creation_yields_same_room(pool: PgPool) {
     let token_a = register_and_login(&app,"alice", "password").await;
     let token_b = register_and_login(&app,"bob", "password").await;
     
-    let (_, user_a) = api(&app, "GET", "/auth/me", Some(&token_a), None).await;
-    let (_, user_b) = api(&app, "GET", "/auth/me", Some(&token_b), None).await;
+    let (_, user_a) = api(&app, "GET", "/v1/auth/me", Some(&token_a), None).await;
+    let (_, user_b) = api(&app, "GET", "/v1/auth/me", Some(&token_b), None).await;
     let alice_id = user_a["id"].as_str().unwrap();
     let bob_id = user_b["id"].as_str().unwrap();
 
@@ -566,11 +566,11 @@ async fn concurrent_dm_creation_yields_same_room(pool: PgPool) {
 
     let (dm1, dm2) = tokio::join!(
         async {
-            api(&app, "POST", "/dms", Some(&token_a_clone),
+            api(&app, "POST", "/v1/dms", Some(&token_a_clone),
                 Some(json!({"user_id": bob_id_clone}))).await
         },
         async {
-            api(&app_clone, "POST", "/dms", Some(&token_b_clone),
+            api(&app_clone, "POST", "/v1/dms", Some(&token_b_clone),
                 Some(json!({"user_id": alice_id_clone}))).await
         }
     );
@@ -592,12 +592,12 @@ async fn signal_forwarded_with_server_stamped_from(pool: PgPool) {
 
     let token_a = register_and_login(&app, "alice", "password").await;
     let token_b = register_and_login(&app, "bob", "password").await;
-    let (_, user_a) = api(&app, "GET", "/auth/me", Some(&token_a), None).await;
-    let (_, user_b) = api(&app, "GET", "/auth/me", Some(&token_b), None).await;
+    let (_, user_a) = api(&app, "GET", "/v1/auth/me", Some(&token_a), None).await;
+    let (_, user_b) = api(&app, "GET", "/v1/auth/me", Some(&token_b), None).await;
     let alice_id = user_a["id"].as_str().unwrap();
     let bob_id = user_b["id"].as_str().unwrap();
 
-    let (_, dm) = api(&app, "POST", "/dms", Some(&token_a),
+    let (_, dm) = api(&app, "POST", "/v1/dms", Some(&token_a),
         Some(json!({"user_id": bob_id}))).await;
     let room_id = dm["room_id"].as_str().unwrap();
 
@@ -637,10 +637,10 @@ async fn signal_with_invalid_target_is_dropped(pool: PgPool) {
 
     let token_a = register_and_login(&app, "alice", "password").await;
     let token_b = register_and_login(&app, "bob", "password").await;
-    let (_, user_b) = api(&app, "GET", "/auth/me", Some(&token_b), None).await;
+    let (_, user_b) = api(&app, "GET", "/v1/auth/me", Some(&token_b), None).await;
     let bob_id = user_b["id"].as_str().unwrap();
 
-    let (_, dm) = api(&app, "POST", "/dms", Some(&token_a),
+    let (_, dm) = api(&app, "POST", "/v1/dms", Some(&token_a),
         Some(json!({"user_id": bob_id}))).await;
     let room_id = dm["room_id"].as_str().unwrap();
 
@@ -675,10 +675,10 @@ async fn signal_is_not_persisted_to_database(pool: PgPool) {
 
     let token_a = register_and_login(&app, "alice", "password").await;
     let token_b = register_and_login(&app, "bob", "password").await;
-    let (_, user_b) = api(&app, "GET", "/auth/me", Some(&token_b), None).await;
+    let (_, user_b) = api(&app, "GET", "/v1/auth/me", Some(&token_b), None).await;
     let bob_id = user_b["id"].as_str().unwrap();
 
-    let (_, dm) = api(&app, "POST", "/dms", Some(&token_a),
+    let (_, dm) = api(&app, "POST", "/v1/dms", Some(&token_a),
         Some(json!({"user_id": bob_id}))).await;
     let room_id = dm["room_id"].as_str().unwrap();
 

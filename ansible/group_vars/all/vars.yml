@@ -7,11 +7,11 @@ postgres_user: chatuser
 frontend_domain: "chat.apps.gihc.online"
 allowed_origin: "https://chat.apps.gihc.online"
 project_dir: /opt/chat
-base_url: "https://api.gihc.online"
+base_url: "https://api.gihc.online/v1"
 frontend_url: "https://chat.apps.gihc.online"
 resend_from: "noreply@gihc.online"
 vps_ip: "65.109.233.92"
 beta_frontend_domain: "beta.chat.apps.gihc.online"
-beta_base_url: "https://beta.api.gihc.online"
+beta_base_url: "https://beta.api.gihc.online/v1"
 beta_frontend_url: "https://beta.chat.apps.gihc.online"
 beta_allowed_origin: "https://beta.chat.apps.gihc.online"

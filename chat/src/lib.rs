@@ -35,7 +35,7 @@ pub struct AppState {
 /// Used by both the binary entrypoint and integration tests.
 pub fn build_app(state: AppState) -> Router {
     let cors = build_cors(&state.config.allowed_origin);
-    Router::new()
+    let v1 = Router::new()
         .route("/auth/register", post(routes::auth::register))
         .route("/auth/token", post(routes::auth::login))
         .route("/auth/me", get(routes::auth::me).delete(routes::auth::delete_me))
@@ -44,7 +44,10 @@ pub fn build_app(state: AppState) -> Router {
         .route("/rooms/:id/messages", get(routes::rooms::messages))
         .route("/users", get(routes::dms::list_users))
         .route("/dms", get(routes::dms::list_dms).post(routes::dms::create_or_get_dm))
-        .route("/ws/:room_id", get(routes::chat::handler))
+        .route("/ws/:room_id", get(routes::chat::handler));
+
+    Router::new()
+        .nest("/v1", v1)
         .layer(cors)
         .with_state(state)
 }
