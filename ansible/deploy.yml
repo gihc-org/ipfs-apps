@@ -123,7 +123,7 @@
       ansible.builtin.uri:
         url: "https://{{ frontend_domain }}/chat.html"
       register: frontend_verify
-      retries: 12
+      retries: 15
       delay: 10
       until: ipfs_cid.stdout | trim in (frontend_verify.x_ipfs_roots | default(''))
 
