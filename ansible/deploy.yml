@@ -1,6 +1,9 @@
 ---
 # Applikationsdeploy — køres ved hvert release.
 # Forudsætter at infra.yml er kørt mindst én gang på serveren.
+# Forudsætter at følgende A-records eksisterer i Simply.com (oprettes én gang manuelt):
+#   beta.api.gihc.online      → {{ vps_ip }}
+#   beta.chat.apps.gihc.online → {{ vps_ip }}
 #
 # Brug:
 #   ansible-playbook ansible/deploy.yml -i ansible/inventory.yml --ask-vault-pass
@@ -54,17 +57,19 @@
       delay: 5
       until: ipfs_ready.rc == 0
 
-    - name: Write config.js with TURN credentials
+    # ── Beta ──────────────────────────────────────────────────────────────────
+
+    - name: Write beta config.js
       ansible.builtin.template:
-        src: templates/config.js.j2
+        src: templates/beta-config.js.j2
         dest: "{{ project_dir }}/frontend/config.js"
         mode: "0644"
 
-    - name: Add frontend to IPFS
+    - name: Add beta frontend to IPFS
       ansible.builtin.command:
         cmd: docker compose -f docker-compose.yml exec -T ipfs ipfs add -r /frontend/ -Q
         chdir: "{{ project_dir }}"
-      register: ipfs_cid
+      register: beta_ipfs_cid
 
     - name: Get DNS records from Simply.com
       ansible.builtin.uri:
@@ -75,7 +80,93 @@
         force_basic_auth: true
       register: simply_records
 
-    - name: Find existing _dnslink record id
+    - name: Find existing beta _dnslink record
+      ansible.builtin.set_fact:
+        beta_dnslink_record: >-
+          {{ simply_records.json.records
+             | selectattr('type', 'equalto', 'TXT')
+             | selectattr('name', 'search', '_dnslink\.' + beta_frontend_domain | replace('.' + domain, ''))
+             | list | first | default({}) }}
+
+    - name: Update beta _dnslink TXT record (existing)
+      ansible.builtin.uri:
+        url: "https://api.simply.com/2/my/products/{{ domain }}/dns/records/{{ beta_dnslink_record.record_id }}/"
+        method: PUT
+        url_username: "{{ simply_account }}"
+        url_password: "{{ simply_api_key }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          type: TXT
+          name: "_dnslink.{{ beta_frontend_domain }}"
+          data: "dnslink=/ipfs/{{ beta_ipfs_cid.stdout | trim }}"
+          ttl: 120
+        status_code: [200]
+      when: beta_dnslink_record.record_id is defined
+
+    - name: Create beta _dnslink TXT record (new)
+      ansible.builtin.uri:
+        url: "https://api.simply.com/2/my/products/{{ domain }}/dns/records/"
+        method: POST
+        url_username: "{{ simply_account }}"
+        url_password: "{{ simply_api_key }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          type: TXT
+          name: "_dnslink.{{ beta_frontend_domain }}"
+          data: "dnslink=/ipfs/{{ beta_ipfs_cid.stdout | trim }}"
+          ttl: 120
+        status_code: [200, 201]
+      when: beta_dnslink_record.record_id is not defined
+
+    - name: Show beta IPFS CID
+      ansible.builtin.debug:
+        msg: "Beta CID: {{ beta_ipfs_cid.stdout | trim }} — _dnslink.{{ beta_frontend_domain }} opdateret"
+
+    - name: Verify beta frontend CID is live
+      ansible.builtin.uri:
+        url: "https://{{ beta_frontend_domain }}/chat.html"
+      register: beta_frontend_verify
+      retries: 15
+      delay: 10
+      until: beta_ipfs_cid.stdout | trim in (beta_frontend_verify.x_ipfs_roots | default(''))
+
+    - name: Wait for beta API to be ready
+      ansible.builtin.uri:
+        url: "{{ beta_base_url }}/auth/me"
+        status_code: [401]
+      register: beta_api_ready
+      retries: 12
+      delay: 5
+      until: beta_api_ready.status == 401
+
+    - name: Run smoke tests against beta
+      ansible.builtin.command:
+        cmd: >
+          bash {{ project_dir }}/scripts/smoke-test.sh
+          {{ beta_base_url }}
+          {{ postgres_user }}
+          {{ vault_postgres_password }}
+          {{ postgres_db }}
+          {{ project_dir }}
+      changed_when: false
+
+    # ── Prod ──────────────────────────────────────────────────────────────────
+
+    - name: Write prod config.js
+      ansible.builtin.template:
+        src: templates/config.js.j2
+        dest: "{{ project_dir }}/frontend/config.js"
+        mode: "0644"
+
+    - name: Add prod frontend to IPFS
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.yml exec -T ipfs ipfs add -r /frontend/ -Q
+        chdir: "{{ project_dir }}"
+      register: ipfs_cid
+
+    - name: Find existing prod _dnslink record
       ansible.builtin.set_fact:
         dnslink_record: >-
           {{ simply_records.json.records
@@ -83,7 +174,7 @@
              | selectattr('name', 'search', '_dnslink\.' + frontend_domain | replace('.' + domain, ''))
              | list | first | default({}) }}
 
-    - name: Update _dnslink TXT record (existing)
+    - name: Update prod _dnslink TXT record (existing)
       ansible.builtin.uri:
         url: "https://api.simply.com/2/my/products/{{ domain }}/dns/records/{{ dnslink_record.record_id }}/"
         method: PUT
@@ -99,7 +190,7 @@
         status_code: [200]
       when: dnslink_record.record_id is defined
 
-    - name: Create _dnslink TXT record (new)
+    - name: Create prod _dnslink TXT record (new)
       ansible.builtin.uri:
         url: "https://api.simply.com/2/my/products/{{ domain }}/dns/records/"
         method: POST
@@ -115,11 +206,11 @@
         status_code: [200, 201]
       when: dnslink_record.record_id is not defined
 
-    - name: Show IPFS CID
+    - name: Show prod IPFS CID
       ansible.builtin.debug:
-        msg: "Frontend CID: {{ ipfs_cid.stdout | trim }} — _dnslink.{{ frontend_domain }} opdateret automatisk"
+        msg: "Prod CID: {{ ipfs_cid.stdout | trim }} — _dnslink.{{ frontend_domain }} opdateret"
 
-    - name: Verify frontend CID is live
+    - name: Verify prod frontend CID is live
       ansible.builtin.uri:
         url: "https://{{ frontend_domain }}/chat.html"
       register: frontend_verify
@@ -127,7 +218,7 @@
       delay: 10
       until: ipfs_cid.stdout | trim in (frontend_verify.x_ipfs_roots | default(''))
 
-    - name: Wait for API to be ready
+    - name: Wait for prod API to be ready
       ansible.builtin.uri:
         url: "{{ base_url }}/auth/me"
         status_code: [401]
@@ -136,7 +227,7 @@
       delay: 5
       until: api_ready.status == 401
 
-    - name: Run smoke tests
+    - name: Run smoke tests against prod
       ansible.builtin.command:
         cmd: >
           bash {{ project_dir }}/scripts/smoke-test.sh
