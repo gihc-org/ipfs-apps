@@ -121,3 +121,4 @@ test('30-sekunders timeout hvis ingen svarer', async ({ browser }) => {
   await alice.page.waitForSelector('.system-msg:has-text("Intet svar")', { timeout: 35000 });
   await expect(alice.page.locator('#callBtn')).toHaveText('Ring op');
 });
+

@@ -259,6 +259,7 @@
       pc.onconnectionstatechange = () => {
         if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
           closePeerVideo();
+          if (inCall) hangUp();
         }
       };
 
