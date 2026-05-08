@@ -10,6 +10,7 @@ export default defineConfig({
   use: {
     baseURL: BASE_URL,
     screenshot: 'only-on-failure',
+    permissions: ['microphone'],
     launchOptions: {
       args: [
         '--use-fake-ui-for-media-stream',
