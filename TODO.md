@@ -2,11 +2,18 @@
 
 ## Playwright e2e tests
 
-- [ ] Opsæt Playwright i `e2e/` med fake mikrofon/kamera (Chromium-flags)
-- [ ] Auth-test: registrering og login-flow
-- [ ] Call-test: ring op → accepter → læg på (to browser-contexts)
+- [x] Opsæt Playwright i `e2e/` med fake mikrofon/kamera (Chromium-flags)
+- [x] Auth-test: registrering og login-flow
+- [x] Call-test: ring op → accepter → læg på (to browser-contexts)
 - [ ] Screen share-test: del skærm → modtager ser video → stop
 - [ ] Integrer i CI-pipeline (kræver Chromium i CI-image)
+
+### Integration i deploy-flow
+
+- [ ] Opret `.woodpecker.yaml` med e2e-trin der kører mod beta-miljøet (`TEST_API_URL=https://beta.api.gihc.online/v1 BASE_URL=https://beta.chat.apps.gihc.online`)
+- [ ] Woodpecker agent-image skal indeholde Chromium og Node.js (brug fx `mcr.microsoft.com/playwright:v1.44.0-jammy` som CI-image)
+- [ ] E2e-trinnet placeres efter beta-deploy og smoke test — fejl stopper deploy til prod
+- [ ] Tilføj `TEST_API_URL` og `BASE_URL` som pipeline-variable i Woodpecker UI
 
 ---
 
