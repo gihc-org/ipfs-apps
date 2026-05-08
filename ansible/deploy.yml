@@ -1,9 +1,7 @@
 ---
 # Applikationsdeploy — køres ved hvert release.
 # Forudsætter at infra.yml er kørt mindst én gang på serveren.
-# Forudsætter at følgende A-records eksisterer i Simply.com (oprettes én gang manuelt):
-#   beta.api.gihc.online      → {{ vps_ip }}
-#   beta.chat.apps.gihc.online → {{ vps_ip }}
+# Beta DNS A-records oprettes automatisk via Simply.com API hvis de ikke findes.
 #
 # Brug:
 #   ansible-playbook ansible/deploy.yml -i ansible/inventory.yml --ask-vault-pass
@@ -57,6 +55,57 @@
       delay: 5
       until: ipfs_ready.rc == 0
 
+    # ── Beta DNS A-records (oprettes én gang, idempotent) ─────────────────────
+
+    - name: Get DNS records from Simply.com
+      ansible.builtin.uri:
+        url: "https://api.simply.com/2/my/products/{{ domain }}/dns/records/"
+        method: GET
+        url_username: "{{ simply_account }}"
+        url_password: "{{ simply_api_key }}"
+        force_basic_auth: true
+      register: simply_records
+
+    - name: Create A-record for beta.api.gihc.online (if missing)
+      ansible.builtin.uri:
+        url: "https://api.simply.com/2/my/products/{{ domain }}/dns/records/"
+        method: POST
+        url_username: "{{ simply_account }}"
+        url_password: "{{ simply_api_key }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          type: A
+          name: "beta.api"
+          data: "{{ vps_ip }}"
+          ttl: 3600
+        status_code: [200, 201]
+      when: >-
+        simply_records.json.records
+        | selectattr('type', 'equalto', 'A')
+        | selectattr('name', 'equalto', 'beta.api')
+        | list | length == 0
+
+    - name: Create A-record for beta.chat.apps.gihc.online (if missing)
+      ansible.builtin.uri:
+        url: "https://api.simply.com/2/my/products/{{ domain }}/dns/records/"
+        method: POST
+        url_username: "{{ simply_account }}"
+        url_password: "{{ simply_api_key }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          type: A
+          name: "beta.chat.apps"
+          data: "{{ vps_ip }}"
+          ttl: 3600
+        status_code: [200, 201]
+      when: >-
+        simply_records.json.records
+        | selectattr('type', 'equalto', 'A')
+        | selectattr('name', 'equalto', 'beta.chat.apps')
+        | list | length == 0
+
     # ── Beta ──────────────────────────────────────────────────────────────────
 
     - name: Write beta config.js
@@ -70,15 +119,6 @@
         cmd: docker compose -f docker-compose.yml exec -T ipfs ipfs add -r /frontend/ -Q
         chdir: "{{ project_dir }}"
       register: beta_ipfs_cid
-
-    - name: Get DNS records from Simply.com
-      ansible.builtin.uri:
-        url: "https://api.simply.com/2/my/products/{{ domain }}/dns/records/"
-        method: GET
-        url_username: "{{ simply_account }}"
-        url_password: "{{ simply_api_key }}"
-        force_basic_auth: true
-      register: simply_records
 
     - name: Find existing beta _dnslink record
       ansible.builtin.set_fact:
