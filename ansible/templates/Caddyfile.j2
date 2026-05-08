@@ -55,3 +55,30 @@ beta.api.{{ domain }} {
         -Server
     }
 }
+
+test.api.{{ domain }} {
+    reverse_proxy chat-test:8080
+
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        -Server
+    }
+}
+
+{{ test_frontend_domain }} {
+    reverse_proxy ipfs:8080 {
+        header_up Host {host}
+    }
+
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://test.api.{{ domain }} wss://test.api.{{ domain }}; style-src 'self' 'unsafe-inline'"
+        Permissions-Policy "camera=(self), microphone=(self), geolocation=()"
+        -Server
+    }
+}

@@ -7,6 +7,22 @@ services:
       - "443:443"
       - "443:443/udp"
 
+  chat-test:
+    build: ./chat
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-chatuser}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-chatdb}
+      JWT_SECRET: ${JWT_SECRET}
+      ALLOWED_ORIGIN: ${TEST_ALLOWED_ORIGIN}
+      TURNSTILE_SECRET: ""
+      RESEND_API_KEY: ""
+      RESEND_FROM: ${RESEND_FROM:-noreply@example.com}
+      BASE_URL: ${TEST_BASE_URL}
+      FRONTEND_URL: ${TEST_FRONTEND_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   chat-beta:
     build: ./chat
     restart: unless-stopped
