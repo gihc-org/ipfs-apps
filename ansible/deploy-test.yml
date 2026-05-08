@@ -1,0 +1,232 @@
+---
+# Deploy infrastruktur + test-miljø.
+# Køres af CI-pipelinen — efterfølges af e2e-tests og deploy-promote.yml.
+#
+# Brug (manuelt):
+#   ansible-playbook ansible/deploy-test.yml -i ansible/inventory.yml --ask-vault-pass
+
+- name: Deploy infrastruktur og test-miljø
+  hosts: gihc_vps
+
+  tasks:
+    - name: Sync project files
+      ansible.posix.synchronize:
+        src: "{{ playbook_dir }}/../"
+        dest: "{{ project_dir }}/"
+        use_ssh_args: yes
+        rsync_opts:
+          - "--exclude=chat/target"
+          - "--exclude=.git"
+          - "--exclude=.env"
+          - "--exclude=ansible"
+          - "--exclude=docker-compose.override.yml"
+
+    - name: Write Caddyfile with domain
+      ansible.builtin.template:
+        src: templates/Caddyfile.j2
+        dest: "{{ project_dir }}/caddy/Caddyfile"
+        mode: "0644"
+
+    - name: Write .env from vault
+      ansible.builtin.template:
+        src: templates/env.j2
+        dest: "{{ project_dir }}/.env"
+        mode: "0600"
+
+    - name: Reload Caddy config
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.yml -f docker-compose.prod.yml restart caddy
+        chdir: "{{ project_dir }}"
+
+    - name: Build and start services
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+        chdir: "{{ project_dir }}"
+      register: compose_result
+      changed_when: "'Started' in compose_result.stdout or 'Created' in compose_result.stdout"
+
+    - name: Wait for IPFS to be ready
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.yml exec -T ipfs ipfs id
+        chdir: "{{ project_dir }}"
+      register: ipfs_ready
+      retries: 10
+      delay: 5
+      until: ipfs_ready.rc == 0
+
+    # ── DNS A-records (oprettes én gang, idempotent) ───────────────────────────
+
+    - name: Get DNS records from Simply.com
+      ansible.builtin.uri:
+        url: "https://api.simply.com/2/my/products/{{ domain }}/dns/records/"
+        method: GET
+        url_username: "{{ simply_account }}"
+        url_password: "{{ simply_api_key }}"
+        force_basic_auth: true
+      register: simply_records
+
+    - name: Create A-record for test.api.gihc.online (if missing)
+      ansible.builtin.uri:
+        url: "https://api.simply.com/2/my/products/{{ domain }}/dns/records/"
+        method: POST
+        url_username: "{{ simply_account }}"
+        url_password: "{{ simply_api_key }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          type: A
+          name: "test.api"
+          data: "{{ vps_ip }}"
+          ttl: 3600
+        status_code: [200, 201]
+      when: >-
+        simply_records.json.records
+        | selectattr('type', 'equalto', 'A')
+        | selectattr('name', 'equalto', 'test.api')
+        | list | length == 0
+
+    - name: Create A-record for test.chat.apps.gihc.online (if missing)
+      ansible.builtin.uri:
+        url: "https://api.simply.com/2/my/products/{{ domain }}/dns/records/"
+        method: POST
+        url_username: "{{ simply_account }}"
+        url_password: "{{ simply_api_key }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          type: A
+          name: "test.chat.apps"
+          data: "{{ vps_ip }}"
+          ttl: 3600
+        status_code: [200, 201]
+      when: >-
+        simply_records.json.records
+        | selectattr('type', 'equalto', 'A')
+        | selectattr('name', 'equalto', 'test.chat.apps')
+        | list | length == 0
+
+    - name: Create A-record for beta.api.gihc.online (if missing)
+      ansible.builtin.uri:
+        url: "https://api.simply.com/2/my/products/{{ domain }}/dns/records/"
+        method: POST
+        url_username: "{{ simply_account }}"
+        url_password: "{{ simply_api_key }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          type: A
+          name: "beta.api"
+          data: "{{ vps_ip }}"
+          ttl: 3600
+        status_code: [200, 201]
+      when: >-
+        simply_records.json.records
+        | selectattr('type', 'equalto', 'A')
+        | selectattr('name', 'equalto', 'beta.api')
+        | list | length == 0
+
+    - name: Create A-record for beta.chat.apps.gihc.online (if missing)
+      ansible.builtin.uri:
+        url: "https://api.simply.com/2/my/products/{{ domain }}/dns/records/"
+        method: POST
+        url_username: "{{ simply_account }}"
+        url_password: "{{ simply_api_key }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          type: A
+          name: "beta.chat.apps"
+          data: "{{ vps_ip }}"
+          ttl: 3600
+        status_code: [200, 201]
+      when: >-
+        simply_records.json.records
+        | selectattr('type', 'equalto', 'A')
+        | selectattr('name', 'equalto', 'beta.chat.apps')
+        | list | length == 0
+
+    # ── Test ──────────────────────────────────────────────────────────────────
+
+    - name: Write test config.js
+      ansible.builtin.template:
+        src: templates/test-config.js.j2
+        dest: "{{ project_dir }}/frontend/config.js"
+        mode: "0644"
+
+    - name: Add test frontend to IPFS
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.yml exec -T ipfs ipfs add -r /frontend/ -Q
+        chdir: "{{ project_dir }}"
+      register: test_ipfs_cid
+
+    - name: Find existing test _dnslink record
+      ansible.builtin.set_fact:
+        test_dnslink_record: >-
+          {{ simply_records.json.records
+             | selectattr('type', 'equalto', 'TXT')
+             | selectattr('name', 'search', '_dnslink\.' + test_frontend_domain | replace('.' + domain, ''))
+             | list | first | default({}) }}
+
+    - name: Update test _dnslink TXT record (existing)
+      ansible.builtin.uri:
+        url: "https://api.simply.com/2/my/products/{{ domain }}/dns/records/{{ test_dnslink_record.record_id }}/"
+        method: PUT
+        url_username: "{{ simply_account }}"
+        url_password: "{{ simply_api_key }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          type: TXT
+          name: "_dnslink.{{ test_frontend_domain }}"
+          data: "dnslink=/ipfs/{{ test_ipfs_cid.stdout | trim }}"
+          ttl: 120
+        status_code: [200]
+      when: test_dnslink_record.record_id is defined
+
+    - name: Create test _dnslink TXT record (new)
+      ansible.builtin.uri:
+        url: "https://api.simply.com/2/my/products/{{ domain }}/dns/records/"
+        method: POST
+        url_username: "{{ simply_account }}"
+        url_password: "{{ simply_api_key }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          type: TXT
+          name: "_dnslink.{{ test_frontend_domain }}"
+          data: "dnslink=/ipfs/{{ test_ipfs_cid.stdout | trim }}"
+          ttl: 120
+        status_code: [200, 201]
+      when: test_dnslink_record.record_id is not defined
+
+    - name: Show test IPFS CID
+      ansible.builtin.debug:
+        msg: "Test CID: {{ test_ipfs_cid.stdout | trim }} — _dnslink.{{ test_frontend_domain }} opdateret"
+
+    - name: Verify test frontend CID is live
+      ansible.builtin.uri:
+        url: "https://{{ test_frontend_domain }}/chat.html"
+      register: test_frontend_verify
+      retries: 36
+      delay: 15
+      until: test_ipfs_cid.stdout | trim in (test_frontend_verify.x_ipfs_roots | default(''))
+
+    - name: Wait for test API to be ready
+      ansible.builtin.uri:
+        url: "{{ test_base_url }}/auth/me"
+        status_code: [401]
+      register: test_api_ready
+      retries: 12
+      delay: 5
+      until: test_api_ready.status == 401
+
+    - name: Run smoke tests against test
+      ansible.builtin.command:
+        cmd: >
+          bash {{ project_dir }}/scripts/smoke-test.sh
+          {{ test_base_url }}
+          {{ postgres_user }}
+          {{ vault_postgres_password }}
+          {{ postgres_db }}
+          {{ project_dir }}
+      changed_when: false

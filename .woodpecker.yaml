@@ -1,0 +1,58 @@
+---
+# CI/CD-pipeline: deploy til test → e2e → fremmer til beta + prod.
+# Kørres ved push til main-branchen.
+#
+# Secrets der skal konfigureres i Woodpecker UI:
+#   vault_password   — ansible-vault adgangskode
+#   ssh_private_key  — privat SSH-nøgle til VPS (indhold af ~/.ssh/id_ed25519)
+
+steps:
+  - name: deploy-test
+    image: alpine/ansible
+    when:
+      - branch: main
+        event: push
+    environment:
+      VAULT_PASSWORD:
+        from_secret: vault_password
+      SSH_PRIVATE_KEY:
+        from_secret: ssh_private_key
+    commands:
+      - apk add --no-cache rsync openssh-client
+      - mkdir -p ~/.ssh
+      - printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+      - chmod 600 ~/.ssh/id_ed25519
+      - ssh-keyscan -H 65.109.233.92 >> ~/.ssh/known_hosts
+      - printf '%s\n' "$VAULT_PASSWORD" > /tmp/.vault-pass
+      - ansible-playbook ansible/deploy-test.yml -i ansible/inventory.yml --vault-password-file /tmp/.vault-pass
+      - rm -f /tmp/.vault-pass
+
+  - name: e2e
+    image: mcr.microsoft.com/playwright:v1.44.0-jammy
+    when:
+      - branch: main
+        event: push
+    commands:
+      - cd e2e && npm ci && npm run test:test
+    depends_on: [deploy-test]
+
+  - name: deploy-promote
+    image: alpine/ansible
+    when:
+      - branch: main
+        event: push
+    environment:
+      VAULT_PASSWORD:
+        from_secret: vault_password
+      SSH_PRIVATE_KEY:
+        from_secret: ssh_private_key
+    commands:
+      - apk add --no-cache rsync openssh-client
+      - mkdir -p ~/.ssh
+      - printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+      - chmod 600 ~/.ssh/id_ed25519
+      - ssh-keyscan -H 65.109.233.92 >> ~/.ssh/known_hosts
+      - printf '%s\n' "$VAULT_PASSWORD" > /tmp/.vault-pass
+      - ansible-playbook ansible/deploy-promote.yml -i ansible/inventory.yml --vault-password-file /tmp/.vault-pass
+      - rm -f /tmp/.vault-pass
+    depends_on: [e2e]

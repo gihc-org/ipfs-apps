@@ -11,10 +11,10 @@
 ### Integration i deploy-flow
 
 - [x] Opret test-miljø på VPS (`test.chat.apps.gihc.online` / `test.api.gihc.online`) — `chat-test` service, Caddy-blokke, DNS, IPFS/DNSLink via Ansible
-- [ ] Opret `.woodpecker.yaml` med e2e-trin der kører mod test-miljøet (`TEST_API_URL=https://test.api.gihc.online/v1 BASE_URL=https://test.chat.apps.gihc.online`)
-- [ ] Woodpecker agent-image skal indeholde Chromium og Node.js (brug fx `mcr.microsoft.com/playwright:v1.44.0-jammy` som CI-image)
-- [ ] E2e-trinnet placeres efter test-deploy og smoke test — fejl stopper deploy til beta/prod
-- [ ] Tilføj `TEST_API_URL` og `BASE_URL` som pipeline-variable i Woodpecker UI
+- [x] Opret `.woodpecker.yaml` — pipeline: `deploy-test` → e2e mod test-miljøet → `deploy-promote` (beta + prod)
+- [x] Playwright-image `mcr.microsoft.com/playwright:v1.44.0-jammy` bruges som e2e CI-image
+- [x] E2e-trinnet gater deploy til beta/prod via `depends_on`
+- [ ] Konfigurér secrets i Woodpecker UI: `vault_password` og `ssh_private_key`
 
 ---
 
