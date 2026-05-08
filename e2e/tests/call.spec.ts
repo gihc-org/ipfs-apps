@@ -2,7 +2,7 @@ import { test, expect, Browser, Page } from '@playwright/test';
 import { register, login, mockConfig, uniqueUser, API_URL } from './helpers';
 
 async function newSession(browser: Browser, username: string, password: string) {
-  const ctx = await browser.newContext();
+  const ctx = await browser.newContext({ permissions: ['microphone'] });
   const page = await ctx.newPage();
   await register(page, username, password);
   await login(page, username, password);
