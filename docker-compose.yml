@@ -1,18 +1,5 @@
 services:
 
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    environment:
-      DOMAIN: ${DOMAIN}
-      ACME_EMAIL: ${ACME_EMAIL}
-    volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - chat
-
   chat:
     build: ./chat
     restart: unless-stopped
@@ -28,6 +15,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - default
+      - platform_net
 
   ipfs:
     image: ipfs/kubo:latest
@@ -35,6 +25,9 @@ services:
     volumes:
       - ipfs_data:/data/ipfs
       - ./frontend:/frontend:ro
+    networks:
+      - default
+      - platform_net
 
   postgres:
     image: postgres:16-alpine
@@ -51,8 +44,11 @@ services:
       timeout: 5s
       retries: 10
 
+networks:
+  platform_net:
+    name: platform_net
+    external: true
+
 volumes:
-  caddy_data:
-  caddy_config:
   postgres_data:
   ipfs_data:

@@ -21,10 +21,10 @@
           - "--exclude=ansible"
           - "--exclude=docker-compose.override.yml"
 
-    - name: Write Caddyfile with domain
+    - name: Skriv chat.caddy til platform conf.d
       ansible.builtin.template:
-        src: templates/Caddyfile.j2
-        dest: "{{ project_dir }}/caddy/Caddyfile"
+        src: templates/chat.caddy.j2
+        dest: /opt/platform/caddy/conf.d/chat.caddy
         mode: "0644"
 
     - name: Write .env from vault
@@ -140,12 +140,11 @@
         | selectattr('name', 'equalto', 'beta.chat.apps')
         | list | length == 0
 
-    # DNS A-records er nu oprettet — genstart Caddy så Let's Encrypt-udfordringen
-    # kan gennemføres med fungerende DNS-opslag.
-    - name: Reload Caddy config after DNS A-records created
+    # DNS A-records er nu oprettet — genindlæs platform Caddy.
+    - name: Genindlæs platform Caddy
       ansible.builtin.command:
-        cmd: docker compose -f docker-compose.yml -f docker-compose.prod.yml restart caddy
-        chdir: "{{ project_dir }}"
+        cmd: docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile
+        chdir: /opt/platform
 
     # ── Test ──────────────────────────────────────────────────────────────────
 

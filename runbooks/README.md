@@ -4,6 +4,10 @@ Driftsopgaver og fejlfindingsprocedurer for ipfs-apps/chat.
 
 Modsat ADR'er (som dokumenterer *hvorfor*) dokumenterer runbooks *hvordan*.
 
+> **Infrastruktur-afhængighed:** ipfs-apps bruger en delt Caddy fra `infra`-projektet
+> (`~/projectes/infra`). Caddy ejes ikke af dette projekt — se `infra/README.md`
+> for opsætning og drift af platform-laget.
+
 | Runbook | Indhold |
 |---------|---------|
 | [deploy.md](deploy.md) | Deploy til produktion via Ansible, rollback |

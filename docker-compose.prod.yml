@@ -1,12 +1,6 @@
 # Produktionskonfiguration — bruges af Ansible:
 # docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 services:
-  caddy:
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-
   chat-test:
     build: ./chat
     restart: unless-stopped
@@ -22,6 +16,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - default
+      - platform_net
 
   chat-beta:
     build: ./chat
@@ -38,6 +35,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - default
+      - platform_net
 
   coturn:
     image: coturn/coturn:latest
@@ -58,3 +58,8 @@ services:
       - "--external-ip=${VPS_IP}"
       - "--min-port=49152"
       - "--max-port=49200"
+
+networks:
+  platform_net:
+    name: platform_net
+    external: true
