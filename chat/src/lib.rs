@@ -60,11 +60,12 @@ impl KeyExtractor for ForwardedIpExtractor {
 pub fn build_app(state: AppState) -> Router {
     let cors = build_cors(&state.config.allowed_origin);
 
-    // 20 req/min sustained, burst of 5 — protects register and login from brute force.
+    // 3 req/s sustained, burst 30 — sustained rate stops brute force; burst covers
+    // concurrent e2e test workers that all originate from the same IP.
     let auth_rate_limit = Arc::new(
         GovernorConfigBuilder::default()
             .per_second(3)
-            .burst_size(5)
+            .burst_size(30)
             .key_extractor(ForwardedIpExtractor)
             .finish()
             .unwrap(),
