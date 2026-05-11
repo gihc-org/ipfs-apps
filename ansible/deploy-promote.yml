@@ -100,7 +100,7 @@
           {{ beta_base_url }}
           {{ postgres_user }}
           {{ vault_postgres_password }}
-          {{ postgres_db }}
+          {{ beta_postgres_db }}
           {{ project_dir }}
       changed_when: false
 
