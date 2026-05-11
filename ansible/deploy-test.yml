@@ -53,7 +53,7 @@
       ansible.builtin.command:
         cmd: >
           docker compose exec -T postgres
-          psql -U {{ postgres_user }} -c "CREATE DATABASE {{ item }}"
+          psql -U {{ postgres_user }} -d postgres -c "CREATE DATABASE {{ item }}"
         chdir: "{{ project_dir }}"
       loop:
         - "{{ test_postgres_db }}"
