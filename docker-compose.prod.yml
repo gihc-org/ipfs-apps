@@ -5,7 +5,7 @@ services:
     build: ./chat
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-chatuser}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-chatdb}
+      DATABASE_URL: postgres://${POSTGRES_USER:-chatuser}:${POSTGRES_PASSWORD}@postgres:5432/${TEST_POSTGRES_DB:-chatdb_test}
       JWT_SECRET: ${JWT_SECRET}
       ALLOWED_ORIGIN: ${TEST_ALLOWED_ORIGIN}
       TURNSTILE_SECRET: ""
@@ -24,7 +24,7 @@ services:
     build: ./chat
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-chatuser}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-chatdb}
+      DATABASE_URL: postgres://${POSTGRES_USER:-chatuser}:${POSTGRES_PASSWORD}@postgres:5432/${BETA_POSTGRES_DB:-chatdb_beta}
       JWT_SECRET: ${JWT_SECRET}
       ALLOWED_ORIGIN: ${BETA_ALLOWED_ORIGIN}
       TURNSTILE_SECRET: ""

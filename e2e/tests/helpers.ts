@@ -34,3 +34,11 @@ export async function login(page: Page, username: string, password: string) {
 export function uniqueUser(prefix = 'user') {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 }
+
+export async function deleteUser(page: Page, token?: string) {
+  const tok = token ?? await page.evaluate(() => localStorage.getItem('token'));
+  if (!tok) return;
+  await page.request.delete(`${API_URL}/auth/me`, {
+    headers: { Authorization: `Bearer ${tok}` },
+  }).catch(() => {});
+}

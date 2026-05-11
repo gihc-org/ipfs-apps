@@ -33,6 +33,35 @@
         dest: "{{ project_dir }}/.env"
         mode: "0600"
 
+    # Postgres skal være klar FØR chat-test/chat-beta starter, ellers fejler de på
+    # manglende databaser. Start postgres isoleret, opret DBer, start resten.
+    - name: Start postgres
+      ansible.builtin.command:
+        cmd: docker compose up -d postgres
+        chdir: "{{ project_dir }}"
+
+    - name: Wait for postgres to be ready
+      ansible.builtin.command:
+        cmd: docker compose exec -T postgres pg_isready -U {{ postgres_user }}
+        chdir: "{{ project_dir }}"
+      register: pg_ready
+      retries: 12
+      delay: 5
+      until: pg_ready.rc == 0
+
+    - name: Opret test- og beta-databaser (idempotent)
+      ansible.builtin.command:
+        cmd: >
+          docker compose exec -T postgres
+          psql -U {{ postgres_user }} -c "CREATE DATABASE {{ item }}"
+        chdir: "{{ project_dir }}"
+      loop:
+        - "{{ test_postgres_db }}"
+        - "{{ beta_postgres_db }}"
+      register: create_db
+      failed_when: create_db.rc != 0 and 'already exists' not in (create_db.stderr | default(''))
+      changed_when: create_db.rc == 0
+
     - name: Build and start services
       ansible.builtin.command:
         cmd: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
@@ -220,6 +249,6 @@
           {{ test_base_url }}
           {{ postgres_user }}
           {{ vault_postgres_password }}
-          {{ postgres_db }}
+          {{ test_postgres_db }}
           {{ project_dir }}
       changed_when: false

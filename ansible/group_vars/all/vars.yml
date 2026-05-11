@@ -4,6 +4,8 @@ simply_api_key: "{{ vault_simply_api_key }}"
 acme_email: kristian.n.jensen@gmail.com
 postgres_db: chatdb
 postgres_user: chatuser
+test_postgres_db: chatdb_test
+beta_postgres_db: chatdb_beta
 frontend_domain: "chat.apps.gihc.online"
 allowed_origin: "https://chat.apps.gihc.online"
 project_dir: /opt/chat

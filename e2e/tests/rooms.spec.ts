@@ -1,10 +1,14 @@
 import { test, expect } from '@playwright/test';
-import { register, login, uniqueUser } from './helpers';
+import { register, login, uniqueUser, deleteUser } from './helpers';
 
 test.beforeEach(async ({ page }) => {
   const username = uniqueUser();
   await register(page, username, 'Password123!');
   await login(page, username, 'Password123!');
+});
+
+test.afterEach(async ({ page }) => {
+  await deleteUser(page);
 });
 
 test('opret rum vises i listen', async ({ page }) => {

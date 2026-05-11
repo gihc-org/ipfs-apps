@@ -1,5 +1,5 @@
 import { test, expect, Browser, Page } from '@playwright/test';
-import { register, login, mockConfig, uniqueUser, API_URL } from './helpers';
+import { register, login, mockConfig, uniqueUser, deleteUser, API_URL } from './helpers';
 
 async function newSession(browser: Browser, username: string, password: string) {
   const ctx = await browser.newContext({ permissions: ['microphone'] });
@@ -61,6 +61,9 @@ test('ring op → accepter → læg på', async ({ browser }) => {
   // Begge ser opkaldet slut
   await expect(alice.page.locator('#activeCall')).not.toHaveClass(/visible/, { timeout: 5000 });
   await expect(bob.page.locator('#activeCall')).not.toHaveClass(/visible/,   { timeout: 5000 });
+
+  await deleteUser(alice.page, alice.token);
+  await deleteUser(bob.page, bob.token);
 });
 
 test('ring op → afvis', async ({ browser }) => {
@@ -91,6 +94,9 @@ test('ring op → afvis', async ({ browser }) => {
   // Alice ser callBtn vende tilbage til "Ring op"
   await expect(alice.page.locator('#callBtn')).toHaveText('Ring op', { timeout: 5000 });
   await expect(alice.page.locator('#incomingCall')).not.toHaveClass(/visible/);
+
+  await deleteUser(alice.page, alice.token);
+  await deleteUser(bob.page, bob.token);
 });
 
 test('30-sekunders timeout hvis ingen svarer', async ({ browser }) => {
@@ -120,5 +126,8 @@ test('30-sekunders timeout hvis ingen svarer', async ({ browser }) => {
   // Ingen svarer — Alice ser "Intet svar" efter 30s
   await alice.page.waitForSelector('.system-msg:has-text("Intet svar")', { timeout: 35000 });
   await expect(alice.page.locator('#callBtn')).toHaveText('Ring op');
+
+  await deleteUser(alice.page, alice.token);
+  await deleteUser(bob.page, bob.token);
 });
 
