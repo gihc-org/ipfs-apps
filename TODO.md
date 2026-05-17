@@ -77,6 +77,7 @@ anbefaling i `OWASP-IMPROVEMENTS.md`.
 Se `OWASP-IMPROVEMENTS.md` for detaljer og kodeeksempler.
 
 - [ ] Rate limiting på `/auth/token`, `/auth/register`, og `/dms` POST (`tower_governor`)
+- [x] Glemt adgangskode — reset via email-link (token udløber efter 1 time)
 - [ ] JWT-token revokering ved logout
 - [ ] Verifikationstoken udløber efter 48 timer
 - [ ] Account lockout efter gentagne fejlede loginforsøg

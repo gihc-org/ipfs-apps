@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Glemt adgangskode — Chat</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .container { max-width: 400px; margin: 80px auto; padding: 0 16px; }
+    h1 { font-size: 24px; margin-bottom: 8px; text-align: center; }
+    .subtitle { text-align: center; color: var(--text-muted); font-size: 14px; margin-bottom: 24px; }
+    form { display: flex; flex-direction: column; gap: 12px; }
+    .back { display: block; text-align: center; margin-top: 16px; font-size: 14px; color: var(--text-muted); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>💬 Chat</h1>
+    <p class="subtitle">Indtast din email, så sender vi et link til at nulstille din adgangskode.</p>
+    <div class="card">
+      <form id="forgotForm">
+        <input type="email" id="email" placeholder="Email" required autocomplete="email">
+        <button type="submit">Send nulstillingslink</button>
+        <div class="error" id="msg"></div>
+      </form>
+    </div>
+    <a href="index.html" class="back">← Tilbage til login</a>
+  </div>
+
+  <script src="config.js"></script>
+  <script>
+    document.getElementById('forgotForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const msgEl = document.getElementById('msg');
+      const btn = e.target.querySelector('button');
+      msgEl.textContent = '';
+      msgEl.style.color = '';
+      btn.disabled = true;
+
+      try {
+        await fetch(`${API_URL}/auth/forgot-password`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: document.getElementById('email').value.trim() }),
+        });
+        // Always show success to avoid email enumeration
+        msgEl.style.color = 'var(--accent)';
+        msgEl.textContent = 'Hvis emailen er registreret, er der sendt et link. Tjek din indbakke.';
+        document.getElementById('email').value = '';
+      } catch {
+        msgEl.textContent = 'Noget gik galt. Prøv igen.';
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

@@ -88,6 +88,8 @@ pub fn build_app(state: AppState) -> Router {
     let auth_routes = Router::new()
         .route("/auth/register", post(routes::auth::register))
         .route("/auth/token", post(routes::auth::login))
+        .route("/auth/forgot-password", post(routes::auth::forgot_password))
+        .route("/auth/reset-password", post(routes::auth::reset_password))
         .layer(GovernorLayer { config: auth_rate_limit });
 
     let v1 = Router::new()

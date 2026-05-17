@@ -236,3 +236,103 @@ pub async fn verify(
     let redirect_url = format!("{}?verified=true", state.config.frontend_url);
     Ok(Redirect::to(&redirect_url))
 }
+
+#[derive(Deserialize)]
+pub struct ForgotPasswordRequest {
+    pub email: String,
+}
+
+/// `POST /auth/forgot-password` — sends a password-reset link to the given email.
+///
+/// Always returns 200 regardless of whether the email exists to prevent
+/// user enumeration. The reset token expires after 1 hour.
+pub async fn forgot_password(
+    State(state): State<AppState>,
+    Json(body): Json<ForgotPasswordRequest>,
+) -> StatusCode {
+    let email = body.email.trim().to_lowercase();
+
+    let Ok(Some(user)) = sqlx::query_as::<_, User>(
+        "SELECT * FROM users WHERE LOWER(email) = $1",
+    )
+    .bind(&email)
+    .fetch_optional(&state.db)
+    .await
+    else {
+        return StatusCode::OK;
+    };
+
+    let Some(user_email) = &user.email else {
+        return StatusCode::OK;
+    };
+
+    let token = Uuid::new_v4();
+    let ok = sqlx::query(
+        "UPDATE users SET reset_token = $1, reset_token_expires_at = NOW() + INTERVAL '1 hour'
+         WHERE id = $2",
+    )
+    .bind(token)
+    .bind(user.id)
+    .execute(&state.db)
+    .await
+    .is_ok();
+
+    if ok {
+        let reset_url = format!("{}/reset.html?token={}", state.config.frontend_url, token);
+        let _ = email::send_reset(
+            &state.http,
+            &state.config.resend_api_key,
+            &state.config.resend_from,
+            user_email,
+            &reset_url,
+        )
+        .await;
+    }
+
+    StatusCode::OK
+}
+
+#[derive(Deserialize)]
+pub struct ResetPasswordRequest {
+    pub token: String,
+    pub password: String,
+}
+
+/// `POST /auth/reset-password` — validates the reset token and updates the password.
+pub async fn reset_password(
+    State(state): State<AppState>,
+    Json(body): Json<ResetPasswordRequest>,
+) -> Result<StatusCode, ApiError> {
+    if body.password.len() < 8 || body.password.len() > 128 {
+        return Err(err(StatusCode::BAD_REQUEST, "Adgangskode skal være 8–128 tegn"));
+    }
+
+    let token = Uuid::parse_str(&body.token)
+        .map_err(|_| err(StatusCode::BAD_REQUEST, "Ugyldigt eller udløbet link"))?;
+
+    let user = sqlx::query_as::<_, User>(
+        "SELECT * FROM users
+         WHERE reset_token = $1 AND reset_token_expires_at > NOW()",
+    )
+    .bind(token)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|_| err(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
+    .ok_or_else(|| err(StatusCode::BAD_REQUEST, "Ugyldigt eller udløbet link"))?;
+
+    let hash = hash_password(&body.password);
+
+    sqlx::query(
+        "UPDATE users SET password_hash = $1, reset_token = NULL, reset_token_expires_at = NULL
+         WHERE id = $2",
+    )
+    .bind(&hash)
+    .bind(user.id)
+    .execute(&state.db)
+    .await
+    .map_err(|_| err(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    tracing::info!(user_id = %user.id, "Password reset completed");
+
+    Ok(StatusCode::OK)
+}

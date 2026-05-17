@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nulstil adgangskode — Chat</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .container { max-width: 400px; margin: 80px auto; padding: 0 16px; }
+    h1 { font-size: 24px; margin-bottom: 8px; text-align: center; }
+    .subtitle { text-align: center; color: var(--text-muted); font-size: 14px; margin-bottom: 24px; }
+    form { display: flex; flex-direction: column; gap: 12px; }
+    .back { display: block; text-align: center; margin-top: 16px; font-size: 14px; color: var(--text-muted); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>💬 Chat</h1>
+    <p class="subtitle">Vælg en ny adgangskode.</p>
+    <div class="card" id="formCard">
+      <form id="resetForm">
+        <input type="password" id="password" placeholder="Ny adgangskode (min. 8 tegn)" required minlength="8" autocomplete="new-password">
+        <input type="password" id="password2" placeholder="Gentag adgangskode" required autocomplete="new-password">
+        <button type="submit">Gem ny adgangskode</button>
+        <div class="error" id="msg"></div>
+      </form>
+    </div>
+    <div class="card" id="invalidCard" style="display:none">
+      <p style="text-align:center;color:var(--text-muted);font-size:14px">
+        Dette link er ugyldigt eller udløbet.<br>
+        <a href="forgot.html">Anmod om et nyt link</a>
+      </p>
+    </div>
+    <a href="index.html" class="back">← Tilbage til login</a>
+  </div>
+
+  <script src="config.js"></script>
+  <script>
+    const token = new URLSearchParams(location.search).get('token');
+    if (!token) {
+      document.getElementById('formCard').style.display = 'none';
+      document.getElementById('invalidCard').style.display = 'block';
+    }
+
+    document.getElementById('resetForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const msgEl = document.getElementById('msg');
+      const btn = e.target.querySelector('button');
+      msgEl.textContent = '';
+      msgEl.style.color = '';
+
+      const pw  = document.getElementById('password').value;
+      const pw2 = document.getElementById('password2').value;
+      if (pw !== pw2) {
+        msgEl.textContent = 'Adgangskoderne stemmer ikke overens.';
+        return;
+      }
+
+      btn.disabled = true;
+      try {
+        const res = await fetch(`${API_URL}/auth/reset-password`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, password: pw }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          msgEl.textContent = data.detail ?? 'Noget gik galt. Prøv igen.';
+          if (res.status === 400) {
+            document.getElementById('formCard').style.display = 'none';
+            document.getElementById('invalidCard').style.display = 'block';
+          }
+          return;
+        }
+        msgEl.style.color = 'var(--accent)';
+        msgEl.textContent = 'Adgangskoden er opdateret! Omdirigerer...';
+        setTimeout(() => { location.href = 'index.html'; }, 1500);
+      } catch {
+        msgEl.textContent = 'Noget gik galt. Prøv igen.';
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

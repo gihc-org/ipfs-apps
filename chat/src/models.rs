@@ -17,6 +17,10 @@ pub struct User {
     #[serde(skip)]
     pub verification_token: Option<Uuid>,
     pub created_at: DateTime<Utc>,
+    #[serde(skip)]
+    pub reset_token: Option<Uuid>,
+    #[serde(skip)]
+    pub reset_token_expires_at: Option<DateTime<Utc>>,
 }
 
 #[derive(sqlx::FromRow, Serialize)]
