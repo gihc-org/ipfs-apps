@@ -606,13 +606,18 @@
       } catch (_) {}
     }
 
+    let reconnectDelay = 1000;
+    let shouldReconnect = true;
+    window.addEventListener('beforeunload', () => { shouldReconnect = false; });
+
     function connect() {
       ws = new WebSocket(`${WS_URL}/ws/${roomId}?token=${token}`);
 
       ws.onopen = () => {
+        reconnectDelay = 1000;
         statusEl.textContent = 'Forbundet';
         document.body.dataset.wsConnected = '';
-        setTimeout(() => { statusEl.textContent = ''; }, 2000);
+        setTimeout(() => { if (statusEl.textContent === 'Forbundet') statusEl.textContent = ''; }, 2000);
       };
 
       ws.onmessage = e => {
@@ -628,10 +633,12 @@
       };
 
       ws.onclose = () => {
-        stopScreenShare();
-        hangUp();
-        statusEl.textContent = 'Forbindelsen mistet — forsøger igen...';
-        setTimeout(connect, 3000);
+        delete document.body.dataset.wsConnected;
+        if (!shouldReconnect) return;
+        const secs = Math.round(reconnectDelay / 1000);
+        statusEl.textContent = `Forbindelsen mistet — forsøger igen om ${secs}s…`;
+        setTimeout(connect, reconnectDelay);
+        reconnectDelay = Math.min(reconnectDelay * 2, 30000);
       };
 
       ws.onerror = () => ws.close();

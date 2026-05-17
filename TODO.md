@@ -99,6 +99,15 @@ Projektet gemmer persondata (email, brugernavn) på EU-borgere. Se ADR-0014.
 
 ---
 
+## WebSocket auto-reconnect med exponential backoff
+
+- [x] Exponential backoff ved reconnect: 1s → 2s → 4s → ... → 30s max; reset ved vellykket forbindelse
+- [x] Fjern `hangUp()` og `stopScreenShare()` fra `ws.onclose` — WebRTC håndterer sit eget lifecycle via `onconnectionstatechange`
+- [x] Stop reconnect ved sidenavigation (`beforeunload`)
+- [x] Vis ventetid i statuslinjen ("forsøger igen om Xs…")
+
+---
+
 ## Online-indikator under direkte beskeder
 
 Vis en grøn prik ud for DM-kontakter der aktuelt er forbundet til serveren.
