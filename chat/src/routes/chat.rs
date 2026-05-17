@@ -80,6 +80,20 @@ async fn handle_socket(socket: WebSocket, state: AppState, room_id: Uuid, user: 
 
     let (mut sender, mut receiver) = socket.split();
 
+    // Increment connection count; broadcast presence if this is the first connection
+    {
+        let mut online = state.online_users.write().await;
+        let count = online.entry(user.id).or_insert(0);
+        *count += 1;
+        if *count == 1 {
+            let _ = tx.send(serde_json::json!({
+                "type": "presence",
+                "user_id": user.id.to_string(),
+                "online": true
+            }).to_string());
+        }
+    }
+
     broadcast(&tx, "join", &user.username, None, None);
 
     // Forward incoming broadcast messages to this WebSocket client
@@ -136,6 +150,22 @@ async fn handle_socket(socket: WebSocket, state: AppState, room_id: Uuid, user: 
     tokio::select! {
         _ = &mut send_task => recv_task.abort(),
         _ = &mut recv_task => send_task.abort(),
+    }
+
+    // Decrement connection count; broadcast offline if no connections remain
+    {
+        let mut online = state.online_users.write().await;
+        if let Some(count) = online.get_mut(&user.id) {
+            *count -= 1;
+            if *count == 0 {
+                online.remove(&user.id);
+                let _ = tx.send(serde_json::json!({
+                    "type": "presence",
+                    "user_id": user.id.to_string(),
+                    "online": false
+                }).to_string());
+            }
+        }
     }
 
     broadcast(&tx, "leave", &user.username, None, None);

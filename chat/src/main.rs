@@ -1,4 +1,4 @@
-use chat::{AppState, Config, RoomMap, build_app};
+use chat::{AppState, Config, OnlineUsers, RoomMap, build_app};
 
 #[tokio::main]
 async fn main() {
@@ -17,9 +17,11 @@ async fn main() {
 
     let rooms: RoomMap =
         std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()));
+    let online_users: OnlineUsers =
+        std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()));
 
     let http = reqwest::Client::new();
-    let state = AppState { db, config, rooms, http };
+    let state = AppState { db, config, rooms, http, online_users };
     let app = build_app(state);
 
     let addr = "0.0.0.0:8080";

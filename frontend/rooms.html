@@ -62,6 +62,16 @@
     }
     .dm-card:hover { border-color: var(--accent); }
     .dm-name { font-weight: 600; }
+    .online-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #22c55e;
+      flex-shrink: 0;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .online-dot.online { opacity: 1; }
   </style>
 </head>
 <body>
@@ -113,6 +123,8 @@
       document.getElementById('navUser').textContent = me.username;
       await Promise.all([loadRooms(), loadDms()]);
       searchUsers('');
+      await updatePresence();
+      setInterval(updatePresence, 30000);
     }
 
     function escapeHtml(str) {
@@ -161,10 +173,23 @@
       if (!dms.length) { list.innerHTML = '<div class="empty">Ingen direkte beskeder endnu.</div>'; return; }
       list.innerHTML = dms.map(d => `
         <div class="dm-card" onclick="enterDm('${d.room_id}','${escapeHtml(d.other_username)}','${d.other_user_id}')">
-          <span class="dm-name">@ ${escapeHtml(d.other_username)}</span>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="online-dot" id="presence-${d.other_user_id}"></span>
+            <span class="dm-name">@ ${escapeHtml(d.other_username)}</span>
+          </div>
           <span style="color:var(--text-muted);font-size:12px">→</span>
         </div>
       `).join('');
+    }
+
+    async function updatePresence() {
+      try {
+        const { online } = await api('/presence');
+        const onlineSet = new Set(online);
+        document.querySelectorAll('.online-dot').forEach(dot => {
+          dot.classList.toggle('online', onlineSet.has(dot.id.slice('presence-'.length)));
+        });
+      } catch (_) {}
     }
 
     function enterDm(id, otherUsername, otherUserId) {

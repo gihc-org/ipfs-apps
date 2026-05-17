@@ -99,6 +99,18 @@ Projektet gemmer persondata (email, brugernavn) på EU-borgere. Se ADR-0014.
 
 ---
 
+## Online-indikator under direkte beskeder
+
+Vis en grøn prik ud for DM-kontakter der aktuelt er forbundet til serveren.
+
+- [x] **Backend**: tilføj global `online_users: Arc<RwLock<HashMap<Uuid, u32>>>` i `AppState` — opdateres når en WS-forbindelse åbnes/lukkes (ref-counted for multiple tabs)
+- [x] **Backend**: ny WS-beskedtype `presence` — broadcastes i rummet når en brugers online-status skifter
+- [x] **Backend**: `GET /v1/presence` — returnerer liste af online bruger-UUIDs (kræver auth)
+- [x] **Frontend** (`rooms.html`): hent `/v1/presence` ved sideload og vis grøn prik ud for online DM-kontakter; opdateres hvert 30. sekund
+- [ ] **Frontend**: opdater prikken i realtid via `presence`-besked i WS (kræver WS-forbindelse på rooms.html)
+
+---
+
 ## WebRTC skærmdeling (ADR-0016)
 
 ### Fase 1 — 1:1 skærmdeling i DM-rum

@@ -12,14 +12,21 @@ use axum::{
     Router,
 };
 use sqlx::PgPool;
+use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use tower_governor::{
     governor::GovernorConfigBuilder, key_extractor::KeyExtractor, GovernorError, GovernorLayer,
 };
 use tower_http::cors::{Any, CorsLayer};
+use uuid::Uuid;
 
 pub use config::Config;
 pub use ws::RoomMap;
+
+/// Tæller aktive WS-forbindelser per bruger (til at håndtere flere tabs).
+/// Brugeren er "online" så længe tælleren er > 0.
+pub type OnlineUsers = Arc<RwLock<HashMap<Uuid, u32>>>;
 
 /// Shared state injected into every Axum handler via `State<AppState>`.
 ///
@@ -33,6 +40,7 @@ pub struct AppState {
     pub config: Config,
     pub rooms: RoomMap,
     pub http: reqwest::Client,
+    pub online_users: OnlineUsers,
 }
 
 /// Extracts the first IP from `X-Forwarded-For` (injected by Caddy) so the rate
@@ -83,6 +91,7 @@ pub fn build_app(state: AppState) -> Router {
         .route("/rooms/:id/messages", get(routes::rooms::messages))
         .route("/users", get(routes::dms::list_users))
         .route("/dms", get(routes::dms::list_dms).post(routes::dms::create_or_get_dm))
+        .route("/presence", get(routes::presence::list))
         .route("/ws/:room_id", get(routes::chat::handler));
 
     Router::new()
