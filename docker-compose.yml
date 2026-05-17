@@ -12,6 +12,9 @@ services:
       RESEND_FROM: ${RESEND_FROM:-noreply@example.com}
       BASE_URL: ${BASE_URL:-http://localhost:8001}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8001}
+      UPLOAD_DIR: /data/uploads
+    volumes:
+      - uploads_data:/data/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -52,3 +55,4 @@ networks:
 volumes:
   postgres_data:
   ipfs_data:
+  uploads_data:

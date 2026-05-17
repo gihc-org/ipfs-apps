@@ -92,6 +92,8 @@ pub fn build_app(state: AppState) -> Router {
         .route("/users", get(routes::dms::list_users))
         .route("/dms", get(routes::dms::list_dms).post(routes::dms::create_or_get_dm))
         .route("/presence", get(routes::presence::list))
+        .route("/files", post(routes::files::upload))
+        .route("/files/:id", get(routes::files::download))
         .route("/ws/:room_id", get(routes::chat::handler));
 
     Router::new()

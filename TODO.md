@@ -99,6 +99,26 @@ Projektet gemmer persondata (email, brugernavn) på EU-borgere. Se ADR-0014.
 
 ---
 
+## Filoverførsel i DM-rum
+
+P2P når modtageren er online, backend-fallback når de er offline.
+
+### Backend (fallback)
+- [x] Migration: `files`-tabel (`id`, `uploader_id`, `filename`, `mime_type`, `size`, `created_at`); filer gemmes på disk i `/data/uploads/`
+- [x] `POST /v1/files` — multipart upload, maks 50 MB; returnerer `{ id, url }`
+- [x] `GET /v1/files/:id` — downloader filen (kræver auth + DM-adgang)
+- [x] Slet fil når tilknyttet bruger sletter sin konto (`DELETE /auth/me`) — via `ON DELETE CASCADE` på `uploader_id`
+- [x] Docker: mount `/data/uploads` som volume i `docker-compose.yml`
+
+### Frontend — chat.html
+- [x] "Vedhæft fil"-knap (kun i DM-rum) der åbner `<input type="file">`
+- [x] Hvis peer er online: send via `RTCDataChannel` på eksisterende `RTCPeerConnection` (chunks à 16 KB)
+- [x] Hvis peer er offline: upload til `POST /v1/files`, send besked med fil-URL
+- [x] Modtager-side: vis filnavn + downloadknap i chatboblen (for backend-filer); for P2P-filer: saml chunks og tilbyd download via `URL.createObjectURL`
+- [x] Progressindikator under overførsel
+
+---
+
 ## WebSocket auto-reconnect med exponential backoff
 
 - [x] Exponential backoff ved reconnect: 1s → 2s → 4s → ... → 30s max; reset ved vellykket forbindelse

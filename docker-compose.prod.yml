@@ -13,6 +13,9 @@ services:
       RESEND_FROM: ${RESEND_FROM:-noreply@example.com}
       BASE_URL: ${TEST_BASE_URL}
       FRONTEND_URL: ${TEST_FRONTEND_URL}
+      UPLOAD_DIR: /data/uploads
+    volumes:
+      - uploads_test:/data/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -32,6 +35,9 @@ services:
       RESEND_FROM: ${RESEND_FROM:-noreply@example.com}
       BASE_URL: ${BETA_BASE_URL}
       FRONTEND_URL: ${BETA_FRONTEND_URL}
+      UPLOAD_DIR: /data/uploads
+    volumes:
+      - uploads_beta:/data/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -63,3 +69,8 @@ networks:
   platform_net:
     name: platform_net
     external: true
+
+volumes:
+  uploads_test:
+  uploads_beta:
+  uploads_data:

@@ -108,6 +108,31 @@
     #callDuration { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 600; }
     #activeCall .spacer { flex: 1; }
     #muteBtn.muted { background: var(--danger); }
+
+    /* ── Filoverførsel ── */
+    #attachBtn { padding: 6px 10px; font-size: 16px; display: none; }
+    .file-transfer {
+      max-width: 680px;
+      width: 100%;
+      margin: 0 auto;
+      font-size: 13px;
+      color: var(--text-muted);
+      padding: 4px 0;
+    }
+    .file-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 13px;
+      text-decoration: none;
+      color: var(--accent);
+      cursor: pointer;
+    }
+    .file-link:hover { background: var(--surface2); }
   </style>
 </head>
 <body>
@@ -141,8 +166,10 @@
 
     <div class="input-bar">
       <input type="text" id="msgInput" placeholder="Skriv en besked..." autocomplete="off">
+      <button id="attachBtn" onclick="document.getElementById('fileInput').click()" title="Vedhæft fil">📎</button>
       <button onclick="sendMessage()">Send</button>
     </div>
+    <input type="file" id="fileInput" style="display:none">
   </div>
 
   <!-- Indgående opkald overlay -->
@@ -182,6 +209,7 @@
     if (isDm && peerId) {
       document.getElementById('shareBtn').style.display = 'inline-block';
       document.getElementById('callBtn').style.display = 'inline-block';
+      document.getElementById('attachBtn').style.display = 'inline-block';
     }
 
     const messagesEl = document.getElementById('messages');
@@ -218,6 +246,9 @@
     let callDurationInterval = null;
     let ringtoneCtx = null;
     let ringtoneInterval = null;
+    let pendingOffer = false; // guard: true while explicit createOffer() is in progress
+    let peerOnline = false;
+    const pendingFiles = {};  // channelId → {filename, size, mime} for incoming DataChannel files
 
     function sendSignal(signal) {
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
@@ -235,6 +266,32 @@
 
       pc.onicecandidate = e => {
         if (e.candidate) sendSignal({ type: 'ice-candidate', candidate: e.candidate });
+      };
+
+      // Handles renegotiation triggered by createDataChannel() when SCTP not yet set up.
+      // Skipped when explicit offer creation is already in progress (pendingOffer flag).
+      pc.onnegotiationneeded = async () => {
+        if (pendingOffer || pc.signalingState !== 'stable') return;
+        if (Date.now() - lastOfferTime < 3000) return;
+        try {
+          pendingOffer = true;
+          const offer = await pc.createOffer();
+          if (pc.signalingState !== 'stable') return;
+          await pc.setLocalDescription(offer);
+          lastOfferTime = Date.now();
+          sendSignal({ type: 'offer', sdp: pc.localDescription });
+        } finally {
+          pendingOffer = false;
+        }
+      };
+
+      pc.ondatachannel = e => {
+        if (!e.channel.label.startsWith('file-')) return;
+        const channelId = e.channel.label.slice(5);
+        const info = pendingFiles[channelId];
+        if (!info) return;
+        delete pendingFiles[channelId];
+        receiveFile(e.channel, info);
       };
 
       pc.ontrack = e => {
@@ -283,15 +340,20 @@
       btn.textContent = 'Stop deling';
       btn.classList.add('active');
 
+      pendingOffer = true;
       getOrCreatePeerConnection();
       localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
       localStream.getVideoTracks()[0].onended = () => stopScreenShare();
 
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      lastOfferTime = Date.now();
-      sendSignal({ type: 'offer', sdp: pc.localDescription });
-      sendSignal({ type: 'started' });
+      try {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        lastOfferTime = Date.now();
+        sendSignal({ type: 'offer', sdp: pc.localDescription });
+        sendSignal({ type: 'started' });
+      } finally {
+        pendingOffer = false;
+      }
     }
 
     function stopScreenShare() {
@@ -328,14 +390,19 @@
       if (pc && pc.connectionState === 'connecting') return;
       if (Date.now() - lastOfferTime < 3000) return;
 
+      pendingOffer = true;
       createPeerConnection();
       localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
       if (inCall && callStream) callStream.getTracks().forEach(t => pc.addTrack(t, callStream));
 
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      lastOfferTime = Date.now();
-      sendSignal({ type: 'offer', sdp: pc.localDescription });
+      try {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        lastOfferTime = Date.now();
+        sendSignal({ type: 'offer', sdp: pc.localDescription });
+      } finally {
+        pendingOffer = false;
+      }
     }
 
     // ── Opkald ────────────────────────────────────────────────────────────────
@@ -414,14 +481,19 @@
       }
 
       inCall = true;
+      pendingOffer = true;
       getOrCreatePeerConnection();
       callStream.getTracks().forEach(t => pc.addTrack(t, callStream));
       showActiveCall();
 
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      lastOfferTime = Date.now();
-      sendSignal({ type: 'offer', sdp: pc.localDescription });
+      try {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        lastOfferTime = Date.now();
+        sendSignal({ type: 'offer', sdp: pc.localDescription });
+      } finally {
+        pendingOffer = false;
+      }
     }
 
     // Callee: show incoming overlay
@@ -567,6 +639,11 @@
         hideActiveCall();
         resetCallBtn();
         if (!sharing) { pc?.close(); pc = null; }
+
+      } else if (signal.type === 'file-offer') {
+        pendingFiles[signal.channelId] = { filename: signal.filename, size: signal.size, mime: signal.mime };
+        // Ensure PC exists so ondatachannel handler is ready when the offer arrives
+        getOrCreatePeerConnection();
       }
     }
 
@@ -582,10 +659,35 @@
         const div = document.createElement('div');
         div.className = 'msg' + (user === username ? ' own' : '');
         const time = created_at ? new Date(created_at).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' }) : '';
-        div.innerHTML = `
-          <div class="meta"><span class="author">${escapeHtml(user)}</span> ${escapeHtml(time)}</div>
-          <div class="bubble">${escapeHtml(content)}</div>
-        `;
+
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+        const authorEl = document.createElement('span');
+        authorEl.className = 'author';
+        authorEl.textContent = user;
+        meta.appendChild(authorEl);
+        meta.appendChild(document.createTextNode(' ' + time));
+
+        const bubble = document.createElement('div');
+        bubble.className = 'bubble';
+
+        if (content.startsWith('__file__:')) {
+          try {
+            const info = JSON.parse(content.slice(9));
+            const btn = document.createElement('button');
+            btn.className = 'file-link';
+            btn.textContent = `📎 ${info.filename} (${formatSize(info.size)})`;
+            btn.onclick = () => downloadFile(info.id, info.filename);
+            bubble.appendChild(btn);
+          } catch {
+            bubble.textContent = content;
+          }
+        } else {
+          bubble.textContent = content;
+        }
+
+        div.appendChild(meta);
+        div.appendChild(bubble);
         messagesEl.appendChild(div);
         scrollBottom();
       }
@@ -604,6 +706,171 @@
         const msgs = await res.json();
         msgs.forEach(m => appendMessage({ type: 'message', user: m.user, content: m.content, created_at: m.created_at }));
       } catch (_) {}
+    }
+
+    // ── Filoverførsel ─────────────────────────────────────────────────────────
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    function appendFileProgress(filename, size, label) {
+      const div = document.createElement('div');
+      div.className = 'file-transfer';
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = `📎 ${filename} (${formatSize(size)}) — `;
+      const statusSpan = document.createElement('span');
+      statusSpan.className = 'file-status';
+      statusSpan.textContent = label;
+      div.appendChild(nameSpan);
+      div.appendChild(statusSpan);
+      messagesEl.appendChild(div);
+      scrollBottom();
+      return div;
+    }
+
+    function updateProgress(el, fraction) {
+      const status = el.querySelector('.file-status');
+      if (status) status.textContent = Math.round(fraction * 100) + '%';
+    }
+
+    function showFileDownload(el, filename, size, url) {
+      el.textContent = '';
+      const btn = document.createElement('button');
+      btn.className = 'file-link';
+      btn.textContent = `📎 ${filename} (${formatSize(size)})`;
+      btn.onclick = () => {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+      };
+      el.appendChild(btn);
+      scrollBottom();
+    }
+
+    async function downloadFile(id, filename) {
+      try {
+        const res = await fetch(`${API_URL}/files/${id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error();
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch {
+        alert('Kunne ikke hente filen. Prøv igen.');
+      }
+    }
+
+    function receiveFile(dc, info) {
+      dc.binaryType = 'arraybuffer';
+      const chunks = [];
+      let received = 0;
+      const progressEl = appendFileProgress(info.filename, info.size, 'Modtager...');
+
+      dc.onmessage = e => {
+        if (typeof e.data !== 'object') return;
+        chunks.push(e.data);
+        received += e.data.byteLength;
+        updateProgress(progressEl, received / info.size);
+        if (received >= info.size) {
+          const blob = new Blob(chunks, { type: info.mime });
+          const url = URL.createObjectURL(blob);
+          showFileDownload(progressEl, info.filename, info.size, url);
+        }
+      };
+      dc.onerror = () => {
+        const s = progressEl.querySelector('.file-status');
+        if (s) s.textContent = 'Overførsel fejlede';
+      };
+    }
+
+    async function sendFileP2P(file) {
+      const channelId = crypto.randomUUID();
+      sendSignal({ type: 'file-offer', filename: file.name, size: file.size, mime: file.type, channelId });
+
+      getOrCreatePeerConnection();
+      const dc = pc.createDataChannel('file-' + channelId);
+      dc.binaryType = 'arraybuffer';
+
+      const progressEl = appendFileProgress(file.name, file.size, 'Venter på forbindelse...');
+
+      dc.onopen = async () => {
+        progressEl.querySelector('.file-status').textContent = 'Sender...';
+        const CHUNK = 16384;
+        const buf = await file.arrayBuffer();
+        let sent = 0;
+        while (sent < buf.byteLength) {
+          while (dc.bufferedAmount > 1024 * 1024) {
+            await new Promise(r => setTimeout(r, 10));
+          }
+          dc.send(buf.slice(sent, Math.min(sent + CHUNK, buf.byteLength)));
+          sent = Math.min(sent + CHUNK, buf.byteLength);
+          updateProgress(progressEl, sent / buf.byteLength);
+        }
+        const s = progressEl.querySelector('.file-status');
+        if (s) s.textContent = '✓ Sendt';
+      };
+      dc.onerror = () => {
+        const s = progressEl.querySelector('.file-status');
+        if (s) s.textContent = 'Fejl ved sending';
+      };
+    }
+
+    async function sendFileBackend(file) {
+      const progressEl = appendFileProgress(file.name, file.size, 'Uploader...');
+      const fd = new FormData();
+      fd.append('room_id', roomId);
+      fd.append('file', file);
+      try {
+        const res = await fetch(`${API_URL}/files`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: fd,
+        });
+        if (!res.ok) throw new Error();
+        const { id } = await res.json();
+        progressEl.remove();
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            content: '__file__:' + JSON.stringify({ id, filename: file.name, size: file.size, mime: file.type }),
+          }));
+        }
+      } catch {
+        const s = progressEl.querySelector('.file-status');
+        if (s) s.textContent = 'Upload fejlede';
+      }
+    }
+
+    function handleFileSelect(e) {
+      const file = e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+      if (peerOnline) {
+        sendFileP2P(file);
+      } else {
+        sendFileBackend(file);
+      }
+    }
+
+    document.getElementById('fileInput').addEventListener('change', handleFileSelect);
+
+    async function checkPeerPresence() {
+      if (!isDm || !peerId) return;
+      try {
+        const res = await fetch(`${API_URL}/presence`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const { online } = await res.json();
+        peerOnline = online.includes(peerId);
+      } catch {}
     }
 
     let reconnectDelay = 1000;
@@ -625,8 +892,13 @@
         if (data.type === 'signal') {
           handleSignal(data.from, data.signal);
         } else {
-          if (data.type === 'join' && isDm && sharing && data.user === roomName) {
-            setTimeout(reinitiateOffer, 500);
+          if (isDm && data.user === roomName) {
+            if (data.type === 'join') {
+              peerOnline = true;
+              if (sharing) setTimeout(reinitiateOffer, 500);
+            } else if (data.type === 'leave') {
+              peerOnline = false;
+            }
           }
           appendMessage(data);
         }
@@ -658,6 +930,7 @@
 
     (async () => {
       await addTurnServer();
+      await checkPeerPresence();
       await loadHistory();
       connect();
     })();

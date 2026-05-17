@@ -45,6 +45,17 @@ pub struct Message {
     pub created_at: DateTime<Utc>,
 }
 
+#[derive(sqlx::FromRow, Serialize)]
+pub struct FileRecord {
+    pub id: Uuid,
+    pub uploader_id: Uuid,
+    pub room_id: Uuid,
+    pub filename: String,
+    pub mime_type: String,
+    pub size: i64,
+    pub created_at: DateTime<Utc>,
+}
+
 /// Result of the `messages JOIN users` query. The `user` field is mapped from
 /// the SQL alias `u.username AS "user"` and is the display name for the frontend.
 #[derive(sqlx::FromRow, Serialize)]

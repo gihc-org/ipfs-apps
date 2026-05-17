@@ -34,6 +34,10 @@ pub struct Config {
     /// The frontend's public URL, used as redirect target after email
     /// verification. E.g. `https://app.gihc.online`.
     pub frontend_url: String,
+
+    /// Directory where uploaded files are stored on disk. Defaults to
+    /// `/data/uploads` (mapped as a Docker volume in production).
+    pub upload_dir: String,
 }
 
 impl Config {
@@ -54,6 +58,8 @@ impl Config {
                 .unwrap_or_else(|_| "http://localhost:8001".into()),
             frontend_url: std::env::var("FRONTEND_URL")
                 .unwrap_or_else(|_| "http://localhost:8001".into()),
+            upload_dir: std::env::var("UPLOAD_DIR")
+                .unwrap_or_else(|_| "/data/uploads".into()),
         }
     }
 }
