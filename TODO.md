@@ -116,6 +116,9 @@ P2P når modtageren er online, backend-fallback når de er offline.
 - [x] Hvis peer er offline: upload til `POST /v1/files`, send besked med fil-URL
 - [x] Modtager-side: vis filnavn + downloadknap i chatboblen (for backend-filer); for P2P-filer: saml chunks og tilbyd download via `URL.createObjectURL`
 - [x] Progressindikator under overførsel
+- [x] 10s fallback til backend hvis DataChannel ikke åbner (peer ikke på DM-siden)
+- [x] Direkte signal-routing: signaler rutes til brugerens personlige kanal så de virker på tværs af rum
+- [x] E2e tests: backend-fallback, P2P (begge i rum), fallback-timeout
 
 ---
 

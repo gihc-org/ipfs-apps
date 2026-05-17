@@ -78,6 +78,20 @@ async fn handle_socket(socket: WebSocket, state: AppState, room_id: Uuid, user: 
     let tx = get_or_create_sender(&state.rooms, &room_key).await;
     let mut rx = tx.subscribe();
 
+    // Get or create personal channel for direct signal routing.
+    // Multiple tabs of the same user share one sender; each gets its own receiver.
+    let user_tx = {
+        let mut senders = state.user_senders.write().await;
+        senders
+            .entry(user.id)
+            .or_insert_with(|| {
+                let (tx, _) = tokio::sync::broadcast::channel(64);
+                tx
+            })
+            .clone()
+    };
+    let mut user_rx = user_tx.subscribe();
+
     let (mut sender, mut receiver) = socket.split();
 
     // Increment connection count; broadcast presence if this is the first connection
@@ -96,9 +110,23 @@ async fn handle_socket(socket: WebSocket, state: AppState, room_id: Uuid, user: 
 
     broadcast(&tx, "join", &user.username, None, None);
 
-    // Forward incoming broadcast messages to this WebSocket client
+    // Forward messages to this WS client — listen to both room channel and personal channel.
+    // The personal channel carries signals routed directly from other users.
     let mut send_task = tokio::spawn(async move {
-        while let Ok(msg) = rx.recv().await {
+        use tokio::sync::broadcast::error::RecvError;
+        loop {
+            let msg = tokio::select! {
+                result = rx.recv() => match result {
+                    Ok(m) => m,
+                    Err(RecvError::Closed) => break,
+                    Err(RecvError::Lagged(_)) => continue,
+                },
+                result = user_rx.recv() => match result {
+                    Ok(m) => m,
+                    Err(RecvError::Closed) => break,
+                    Err(RecvError::Lagged(_)) => continue,
+                },
+            };
             if sender.send(Message::Text(msg.into())).await.is_err() {
                 break;
             }
@@ -108,6 +136,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, room_id: Uuid, user: 
     let username = user.username.clone();
     let db = state.db.clone();
     let tx2 = tx.clone();
+    let user_senders = state.user_senders.clone();
     // Read messages from this client, persist them, and broadcast to the room
     let mut recv_task = tokio::spawn(async move {
         while let Some(Ok(Message::Text(text))) = receiver.next().await {
@@ -115,13 +144,17 @@ async fn handle_socket(socket: WebSocket, state: AppState, room_id: Uuid, user: 
                 continue;
             };
 
-            // WebRTC signaling — forward with server-stamped `from`, never persisted
+            // WebRTC signaling — route directly to the target user's personal channel.
+            // This works even when sender and receiver are in different rooms.
             if data["type"] == "signal" {
-                if let Some(target) = data["target"].as_str() {
-                    if Uuid::parse_str(target).is_ok() {
+                if let Some(target_str) = data["target"].as_str() {
+                    if let Ok(target_id) = Uuid::parse_str(target_str) {
                         let mut fwd = data.clone();
                         fwd["from"] = serde_json::Value::String(user.id.to_string());
-                        let _ = tx2.send(fwd.to_string());
+                        let senders = user_senders.read().await;
+                        if let Some(target_tx) = senders.get(&target_id) {
+                            let _ = target_tx.send(fwd.to_string());
+                        }
                     }
                 }
                 continue;

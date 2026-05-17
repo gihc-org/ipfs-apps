@@ -812,7 +812,18 @@
 
       const progressEl = appendFileProgress(file.name, file.size, 'Venter på forbindelse...');
 
+      // Fallback: if DataChannel doesn't open within 10s (peer not on this DM page),
+      // cancel and upload via backend instead.
+      const fallbackTimer = setTimeout(() => {
+        if (dc.readyState !== 'open') {
+          dc.close();
+          progressEl.remove();
+          sendFileBackend(file);
+        }
+      }, 10000);
+
       dc.onopen = async () => {
+        clearTimeout(fallbackTimer);
         progressEl.querySelector('.file-status').textContent = 'Sender...';
         const CHUNK = 16384;
         const buf = await file.arrayBuffer();
@@ -829,6 +840,7 @@
         if (s) s.textContent = '✓ Sendt';
       };
       dc.onerror = () => {
+        clearTimeout(fallbackTimer);
         const s = progressEl.querySelector('.file-status');
         if (s) s.textContent = 'Fejl ved sending';
       };

@@ -20,7 +20,7 @@ use tokio::sync::RwLock;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tower::ServiceExt;
 
-use chat::{AppState, Config, RoomMap, build_app};
+use chat::{AppState, Config, RoomMap, UserSenders, build_app};
 
 /// Starts a real TCP listener on a random port and returns the bound address.
 async fn start_server(pool: PgPool) -> std::net::SocketAddr {
@@ -61,9 +61,12 @@ fn test_state(db: PgPool) -> AppState {
             resend_from: "noreply@test.example".into(),
             base_url: "http://localhost:8001".into(),
             frontend_url: "http://localhost:8001".into(),
+            upload_dir: "/tmp/test-uploads".into(),
         },
         rooms: Arc::new(RwLock::new(HashMap::new())) as RoomMap,
         http: reqwest::Client::new(),
+        online_users: Arc::new(RwLock::new(HashMap::new())),
+        user_senders: Arc::new(RwLock::new(HashMap::new())) as UserSenders,
     }
 }
 

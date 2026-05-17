@@ -28,6 +28,12 @@ pub use ws::RoomMap;
 /// Brugeren er "online" så længe tælleren er > 0.
 pub type OnlineUsers = Arc<RwLock<HashMap<Uuid, u32>>>;
 
+/// Personlig broadcast-kanal per bruger til direkte signal-routing.
+/// Gør det muligt at sende WebRTC-signaler til en bruger uanset hvilket rum
+/// de er forbundet til — nødvendigt for fil-overførsel når parterne ikke er
+/// i samme rum på samme tid.
+pub type UserSenders = Arc<RwLock<HashMap<Uuid, tokio::sync::broadcast::Sender<String>>>>;
+
 /// Shared state injected into every Axum handler via `State<AppState>`.
 ///
 /// `db` is a connection pool — cloning it is cheap (Arc under the hood).
@@ -41,6 +47,7 @@ pub struct AppState {
     pub rooms: RoomMap,
     pub http: reqwest::Client,
     pub online_users: OnlineUsers,
+    pub user_senders: UserSenders,
 }
 
 /// Extracts the first IP from `X-Forwarded-For` (injected by Caddy) so the rate
