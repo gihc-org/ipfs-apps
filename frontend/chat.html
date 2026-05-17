@@ -314,9 +314,20 @@
       };
 
       pc.onconnectionstatechange = () => {
-        if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+        const state = pc.connectionState;
+        if (state === 'disconnected' || state === 'failed') {
           closePeerVideo();
           if (inCall) hangUp();
+          if (sharing) {
+            const thisPc = pc;
+            // failed: permanent — retry after 2s; disconnected: transient — give browser 10s to self-recover first
+            const delay = state === 'failed' ? 2000 : 10000;
+            setTimeout(() => {
+              if (pc === thisPc && sharing && pc.connectionState !== 'connected') {
+                reinitiateOffer();
+              }
+            }, delay);
+          }
         }
       };
 
