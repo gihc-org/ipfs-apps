@@ -46,6 +46,26 @@
     .input-bar input { flex: 1; }
     #status { font-size: 12px; color: var(--text-muted); padding: 4px 20px; background: var(--surface); }
 
+    /* ── WebRTC status ── */
+    #rtcStatus {
+      display: none;
+      font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+      cursor: help;
+    }
+    #rtcStatus.visible { display: inline-block; }
+    #rtcStatus[data-state="connected"]    { background: #14321a; border-color: #2d6b3a; color: #6bd685; }
+    #rtcStatus[data-state="connecting"]   { background: #2f2f14; border-color: #6b6b2d; color: #d6d66b; }
+    #rtcStatus[data-state="new"]          { background: #14202f; border-color: #2d4a6b; color: #6ba6d6; }
+    #rtcStatus[data-state="disconnected"] { background: #322414; border-color: #6b4d2d; color: #d6a66b; }
+    #rtcStatus[data-state="failed"]       { background: #321414; border-color: #6b2d2d; color: #d66b6b; }
+    #rtcStatus[data-state="closed"]       { background: var(--surface); border-color: var(--border); color: var(--text-muted); }
+
     /* ── Skærmdeling ── */
     #shareBtn { padding: 6px 14px; font-size: 13px; display: none; }
     #shareBtn.active { background: var(--danger); }
@@ -142,6 +162,7 @@
       <span id="roomTitle" style="font-weight:700"></span>
       <span style="display:flex;align-items:center;gap:12px">
         <span class="user" id="navUser"></span>
+        <span id="rtcStatus" title="WebRTC-forbindelsesstatus"></span>
         <button id="callBtn" onclick="startCall()">Ring op</button>
         <button id="shareBtn" onclick="toggleScreenShare()">Del skærm</button>
       </span>
@@ -255,17 +276,139 @@
       ws.send(JSON.stringify({ type: 'signal', target: peerId, signal }));
     }
 
+    // ── WebRTC diagnostik ──────────────────────────────────────────────────────
+    const rtcStartTime = performance.now();
+    function logRtc(event, data) {
+      const t = ((performance.now() - rtcStartTime) / 1000).toFixed(2);
+      if (data === undefined) console.log(`[webrtc +${t}s] ${event}`);
+      else console.log(`[webrtc +${t}s] ${event}`, data);
+    }
+
+    let rtcRetryTimer = null;
+    let rtcRetryDeadline = 0;
+    let rtcRetryInterval = null;
+
+    function updateRtcStatus() {
+      const el = document.getElementById('rtcStatus');
+      const active = sharing || inCall || (pc && pc.connectionState !== 'closed' && pc.connectionState !== 'new');
+      if (!active && !rtcRetryTimer) {
+        el.classList.remove('visible');
+        el.removeAttribute('data-state');
+        el.textContent = '';
+        return;
+      }
+      const state = pc ? pc.connectionState : 'closed';
+      const ice = pc ? pc.iceConnectionState : '—';
+      el.dataset.state = state;
+      let label = `RTC: ${state} · ICE: ${ice}`;
+      if (rtcRetryTimer) {
+        const secs = Math.max(0, Math.ceil((rtcRetryDeadline - Date.now()) / 1000));
+        label += ` · genforsøg om ${secs}s`;
+      }
+      el.textContent = label;
+      el.classList.add('visible');
+    }
+
+    function scheduleRtcRetry(delay, reason) {
+      cancelRtcRetry();
+      rtcRetryDeadline = Date.now() + delay;
+      logRtc('retry-scheduled', { delayMs: delay, reason });
+      const thisPc = pc;
+      rtcRetryInterval = setInterval(updateRtcStatus, 500);
+      rtcRetryTimer = setTimeout(() => {
+        cancelRtcRetry();
+        if (pc === thisPc && sharing && pc.connectionState !== 'connected') {
+          logRtc('retry-firing', { reason });
+          reinitiateOffer();
+        } else {
+          logRtc('retry-skipped', {
+            pcReplaced: pc !== thisPc,
+            sharing,
+            state: pc?.connectionState,
+          });
+        }
+      }, delay);
+      updateRtcStatus();
+    }
+
+    function cancelRtcRetry() {
+      if (rtcRetryTimer) { clearTimeout(rtcRetryTimer); rtcRetryTimer = null; }
+      if (rtcRetryInterval) { clearInterval(rtcRetryInterval); rtcRetryInterval = null; }
+      rtcRetryDeadline = 0;
+    }
+
+    window.rtcDump = () => {
+      if (!pc) { console.log('[webrtc] no peer connection'); return null; }
+      const senders = pc.getSenders().map(s => ({
+        kind: s.track?.kind, id: s.track?.id, readyState: s.track?.readyState,
+      }));
+      const receivers = pc.getReceivers().map(r => ({
+        kind: r.track?.kind, id: r.track?.id, readyState: r.track?.readyState,
+      }));
+      const snapshot = {
+        connectionState: pc.connectionState,
+        iceConnectionState: pc.iceConnectionState,
+        iceGatheringState: pc.iceGatheringState,
+        signalingState: pc.signalingState,
+        senders, receivers,
+        flags: { sharing, inCall, peerOnline, pendingOffer },
+        lastOfferAgoMs: lastOfferTime ? Date.now() - lastOfferTime : null,
+        retryInMs: rtcRetryTimer ? Math.max(0, rtcRetryDeadline - Date.now()) : null,
+      };
+      console.log('[webrtc] dump', snapshot);
+      return snapshot;
+    };
+
     function getOrCreatePeerConnection() {
       if (pc && pc.connectionState !== 'closed' && pc.connectionState !== 'failed') return pc;
       return createPeerConnection();
     }
 
     function createPeerConnection() {
-      if (pc) pc.close();
+      if (pc) {
+        logRtc('pc-close-existing', { prevState: pc.connectionState });
+        pc.close();
+      }
       pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+      logRtc('pc-created', { iceServers: ICE_SERVERS.map(s => s.urls) });
+      updateRtcStatus();
 
       pc.onicecandidate = e => {
-        if (e.candidate) sendSignal({ type: 'ice-candidate', candidate: e.candidate });
+        if (e.candidate) {
+          logRtc('ice-candidate-local', {
+            type: e.candidate.type,
+            protocol: e.candidate.protocol,
+            address: e.candidate.address,
+            port: e.candidate.port,
+            relatedAddress: e.candidate.relatedAddress,
+          });
+          sendSignal({ type: 'ice-candidate', candidate: e.candidate });
+        } else {
+          logRtc('ice-gathering-done');
+        }
+      };
+
+      pc.onicecandidateerror = e => {
+        logRtc('ice-candidate-error', {
+          errorCode: e.errorCode,
+          errorText: e.errorText,
+          url: e.url,
+          address: e.address,
+          port: e.port,
+        });
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        logRtc('ice-connection-state', { state: pc.iceConnectionState });
+        updateRtcStatus();
+      };
+
+      pc.onicegatheringstatechange = () => {
+        logRtc('ice-gathering-state', { state: pc.iceGatheringState });
+      };
+
+      pc.onsignalingstatechange = () => {
+        logRtc('signaling-state', { state: pc.signalingState });
       };
 
       // Handles renegotiation triggered by createDataChannel() when SCTP not yet set up.
@@ -315,18 +458,16 @@
 
       pc.onconnectionstatechange = () => {
         const state = pc.connectionState;
+        logRtc('connection-state', { state, sharing, inCall });
+        updateRtcStatus();
+        if (state === 'connected') cancelRtcRetry();
         if (state === 'disconnected' || state === 'failed') {
           closePeerVideo();
           if (inCall) hangUp();
           if (sharing) {
-            const thisPc = pc;
             // failed: permanent — retry after 2s; disconnected: transient — give browser 10s to self-recover first
             const delay = state === 'failed' ? 2000 : 10000;
-            setTimeout(() => {
-              if (pc === thisPc && sharing && pc.connectionState !== 'connected') {
-                reinitiateOffer();
-              }
-            }, delay);
+            scheduleRtcRetry(delay, `connection-state=${state}`);
           }
         }
       };
@@ -347,6 +488,7 @@
       }
 
       sharing = true;
+      logRtc('share-start');
       const btn = document.getElementById('shareBtn');
       btn.textContent = 'Stop deling';
       btn.classList.add('active');
@@ -355,11 +497,13 @@
       getOrCreatePeerConnection();
       localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
       localStream.getVideoTracks()[0].onended = () => stopScreenShare();
+      updateRtcStatus();
 
       try {
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         lastOfferTime = Date.now();
+        logRtc('offer-sent', { reason: 'share-start' });
         sendSignal({ type: 'offer', sdp: pc.localDescription });
         sendSignal({ type: 'started' });
       } finally {
@@ -370,6 +514,8 @@
     function stopScreenShare() {
       if (!sharing) return;
       sharing = false;
+      logRtc('share-stop');
+      cancelRtcRetry();
 
       localStream?.getTracks().forEach(t => {
         t.stop();
@@ -388,6 +534,7 @@
       closePeerVideo();
 
       if (!inCall) { pc?.close(); pc = null; }
+      updateRtcStatus();
     }
 
     function closePeerVideo(notify = false) {
@@ -397,10 +544,20 @@
     }
 
     async function reinitiateOffer() {
-      if (!sharing || !localStream) return;
-      if (pc && pc.connectionState === 'connecting') return;
-      if (Date.now() - lastOfferTime < 3000) return;
+      if (!sharing || !localStream) {
+        logRtc('reinit-skip', { reason: 'not-sharing', sharing, hasStream: !!localStream });
+        return;
+      }
+      if (pc && pc.connectionState === 'connecting') {
+        logRtc('reinit-skip', { reason: 'pc-connecting' });
+        return;
+      }
+      if (Date.now() - lastOfferTime < 3000) {
+        logRtc('reinit-skip', { reason: 'offer-too-recent', agoMs: Date.now() - lastOfferTime });
+        return;
+      }
 
+      logRtc('reinit-start', { prevState: pc?.connectionState });
       pendingOffer = true;
       createPeerConnection();
       localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
@@ -410,6 +567,7 @@
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         lastOfferTime = Date.now();
+        logRtc('offer-sent', { reason: 'reinit' });
         sendSignal({ type: 'offer', sdp: pc.localDescription });
       } finally {
         pendingOffer = false;
@@ -492,15 +650,18 @@
       }
 
       inCall = true;
+      logRtc('call-start', { role: 'caller' });
       pendingOffer = true;
       getOrCreatePeerConnection();
       callStream.getTracks().forEach(t => pc.addTrack(t, callStream));
       showActiveCall();
+      updateRtcStatus();
 
       try {
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         lastOfferTime = Date.now();
+        logRtc('offer-sent', { reason: 'call-start' });
         sendSignal({ type: 'offer', sdp: pc.localDescription });
       } finally {
         pendingOffer = false;
@@ -533,7 +694,9 @@
       }
 
       inCall = true;
+      logRtc('call-start', { role: 'callee' });
       showActiveCall();
+      updateRtcStatus();
       sendSignal({ type: 'call-accept' });
       // Caller will now send an offer; callee's audio track is added in handleSignal
     }
@@ -551,6 +714,7 @@
       if (!inCall) return;
       inCall = false;
       muted = false;
+      logRtc('call-end', { trigger: 'local' });
 
       callStream?.getTracks().forEach(t => {
         t.stop();
@@ -569,6 +733,7 @@
       resetCallBtn();
 
       if (!sharing) { pc?.close(); pc = null; }
+      updateRtcStatus();
     }
 
     function toggleMute() {
@@ -597,10 +762,12 @@
     // ── Signal-håndtering ─────────────────────────────────────────────────────
     async function handleSignal(from, signal) {
       if (from !== peerId) return;
+      logRtc('signal-in', { type: signal.type });
 
       if (signal.type === 'offer') {
         // Renegotiering hvis PC allerede er forbundet (fx tilføjelse af lyd-track)
         const renegotiate = pc && pc.connectionState === 'connected';
+        logRtc('offer-received', { renegotiate, prevState: pc?.connectionState });
         if (!renegotiate) createPeerConnection();
 
         // Hvis vi er i et opkald: tilføj vores lyd-track hvis det ikke allerede er der
@@ -612,13 +779,17 @@
         await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
+        logRtc('answer-sent');
         sendSignal({ type: 'answer', sdp: pc.localDescription });
 
       } else if (signal.type === 'answer') {
+        logRtc('answer-received');
         await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
 
       } else if (signal.type === 'ice-candidate') {
-        await pc.addIceCandidate(new RTCIceCandidate(signal.candidate)).catch(() => {});
+        await pc.addIceCandidate(new RTCIceCandidate(signal.candidate)).catch(err => {
+          logRtc('ice-add-error', { message: err?.message });
+        });
 
       } else if (signal.type === 'stopped') {
         closePeerVideo();
@@ -640,6 +811,7 @@
         appendSystemMsg(roomName + ' afviste opkaldet');
 
       } else if (signal.type === 'call-end') {
+        logRtc('call-end', { trigger: 'remote' });
         stopRingtone();
         document.getElementById('incomingCall').classList.remove('visible');
         inCall = false;
@@ -650,6 +822,7 @@
         hideActiveCall();
         resetCallBtn();
         if (!sharing) { pc?.close(); pc = null; }
+        updateRtcStatus();
 
       } else if (signal.type === 'file-offer') {
         pendingFiles[signal.channelId] = { filename: signal.filename, size: signal.size, mime: signal.mime };
@@ -918,9 +1091,11 @@
           if (isDm && data.user === roomName) {
             if (data.type === 'join') {
               peerOnline = true;
+              logRtc('peer-join', { willReinit: sharing });
               if (sharing) setTimeout(reinitiateOffer, 500);
             } else if (data.type === 'leave') {
               peerOnline = false;
+              logRtc('peer-leave');
             }
           }
           appendMessage(data);

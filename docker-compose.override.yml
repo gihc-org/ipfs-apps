@@ -1,15 +1,9 @@
 # Lokal udvikling — bruges automatisk af `docker compose up`
 # I produktion: docker compose -f docker-compose.yml up
+#
+# Caddy ligger i det delte platform-lag (se ~/projects/infra). Lokal frontend
+# serveres af Playwright via python -m http.server 8888, eller direkte fra disk.
 services:
-  caddy:
-    ports:
-      - "8888:8888"
-    volumes:
-      - ./caddy/Caddyfile.local:/etc/caddy/Caddyfile:ro
-      - ./frontend:/frontend:ro
-      - caddy_data:/data
-      - caddy_config:/config
-
   chat:
     ports:
       - "8001:8080"

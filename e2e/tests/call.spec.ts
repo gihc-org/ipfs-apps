@@ -99,6 +99,95 @@ test('ring op → afvis', async ({ browser }) => {
   await deleteUser(bob.page, bob.token);
 });
 
+test('RTC-status pill, logging og rtcDump() under opkald', async ({ browser }) => {
+  const pw = 'Password123!';
+  const alice = await newSession(browser, uniqueUser('alice'), pw);
+  const bob   = await newSession(browser, uniqueUser('bob'),   pw);
+
+  const dmRes = await alice.page.request.post(`${API_URL}/dms`, {
+    headers: { Authorization: `Bearer ${alice.token}` },
+    data: { user_id: bob.userId },
+  });
+  if (!dmRes.ok()) throw new Error(`DM POST failed ${dmRes.status()}: ${await dmRes.text()}`);
+  const { room_id: roomId } = JSON.parse(await dmRes.text());
+
+  const aliceName = await alice.page.evaluate(() => localStorage.getItem('username') ?? '');
+  const bobName   = await bob.page.evaluate(()   => localStorage.getItem('username') ?? '');
+
+  // Capture [webrtc]-logs på Alice
+  const aliceLogs: string[] = [];
+  alice.page.on('console', msg => {
+    const text = msg.text();
+    if (text.startsWith('[webrtc')) aliceLogs.push(text);
+  });
+
+  await openDm(alice.page, roomId, bobName,   bob.userId);
+  await openDm(bob.page,   roomId, aliceName, alice.userId);
+
+  // Inden opkald: pillen er skjult
+  await expect(alice.page.locator('#rtcStatus')).not.toHaveClass(/visible/);
+
+  // Alice ringer op, Bob accepterer
+  await alice.page.waitForSelector('#callBtn', { state: 'visible' });
+  await alice.page.click('#callBtn');
+  await bob.page.waitForSelector('#incomingCall.visible', { timeout: 10000 });
+  await bob.page.click('button:has-text("Accepter")');
+  await alice.page.waitForSelector('#activeCall.visible', { timeout: 15000 });
+
+  // Pillen er synlig og har RTC:/ICE:-tekst
+  const pill = alice.page.locator('#rtcStatus');
+  await expect(pill).toHaveClass(/visible/, { timeout: 5000 });
+  await expect(pill).toContainText(/RTC: \S+ · ICE: \S+/, { timeout: 5000 });
+
+  // Logs indeholder forventede events
+  await expect.poll(() => aliceLogs.join('\n'), { timeout: 5000 })
+    .toContain('call-start');
+  expect(aliceLogs.some(l => l.includes('pc-created'))).toBe(true);
+  expect(aliceLogs.some(l => l.includes('offer-sent'))).toBe(true);
+  expect(aliceLogs.some(l => l.includes('signaling-state'))).toBe(true);
+
+  // rtcDump returnerer øjebliksbillede med forventet shape
+  const dump = await alice.page.evaluate(() => (window as any).rtcDump());
+  expect(dump).toBeTruthy();
+  expect(dump).toHaveProperty('connectionState');
+  expect(dump).toHaveProperty('iceConnectionState');
+  expect(dump).toHaveProperty('signalingState');
+  expect(dump.flags).toMatchObject({ inCall: true });
+  expect(Array.isArray(dump.senders)).toBe(true);
+  expect(dump.senders.some((s: { kind: string }) => s.kind === 'audio')).toBe(true);
+
+  // Læg på → pillen forsvinder igen
+  await alice.page.click('button:has-text("Læg på")');
+  await expect(alice.page.locator('#activeCall')).not.toHaveClass(/visible/, { timeout: 5000 });
+  await expect(pill).not.toHaveClass(/visible/, { timeout: 5000 });
+
+  await deleteUser(alice.page, alice.token);
+  await deleteUser(bob.page, bob.token);
+});
+
+test('rtcDump() returnerer null når intet PC findes', async ({ browser }) => {
+  const pw = 'Password123!';
+  const alice = await newSession(browser, uniqueUser('alice'), pw);
+  const bob   = await newSession(browser, uniqueUser('bob'),   pw);
+
+  const dmRes = await alice.page.request.post(`${API_URL}/dms`, {
+    headers: { Authorization: `Bearer ${alice.token}` },
+    data: { user_id: bob.userId },
+  });
+  if (!dmRes.ok()) throw new Error(`DM POST failed ${dmRes.status()}: ${await dmRes.text()}`);
+  const { room_id: roomId } = JSON.parse(await dmRes.text());
+
+  const bobName = await bob.page.evaluate(() => localStorage.getItem('username') ?? '');
+  await openDm(alice.page, roomId, bobName, bob.userId);
+
+  const dump = await alice.page.evaluate(() => (window as any).rtcDump());
+  expect(dump).toBeNull();
+  await expect(alice.page.locator('#rtcStatus')).not.toHaveClass(/visible/);
+
+  await deleteUser(alice.page, alice.token);
+  await deleteUser(bob.page, bob.token);
+});
+
 test('30-sekunders timeout hvis ingen svarer', async ({ browser }) => {
   test.setTimeout(45000);
 
