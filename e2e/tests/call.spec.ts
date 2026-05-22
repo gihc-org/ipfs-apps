@@ -165,6 +165,80 @@ test('RTC-status pill, logging og rtcDump() under opkald', async ({ browser }) =
   await deleteUser(bob.page, bob.token);
 });
 
+test('remoteVideo.srcObject overlever transient disconnect, ryddes ved failed', async ({ browser }) => {
+  const pw = 'Password123!';
+  const alice = await newSession(browser, uniqueUser('alice'), pw);
+  const bob   = await newSession(browser, uniqueUser('bob'),   pw);
+
+  // Wrap RTCPeerConnection på Bob så vi kan tilgå PC-instansen i page.evaluate
+  await bob.page.addInitScript(() => {
+    const Original = window.RTCPeerConnection;
+    (window as any).__pcs = [];
+    window.RTCPeerConnection = new Proxy(Original, {
+      construct(target, args) {
+        const instance = Reflect.construct(target, args, target);
+        (window as any).__pcs.push(instance);
+        return instance;
+      },
+    }) as any;
+  });
+
+  const dmRes = await alice.page.request.post(`${API_URL}/dms`, {
+    headers: { Authorization: `Bearer ${alice.token}` },
+    data: { user_id: bob.userId },
+  });
+  if (!dmRes.ok()) throw new Error(`DM POST failed ${dmRes.status()}: ${await dmRes.text()}`);
+  const { room_id: roomId } = JSON.parse(await dmRes.text());
+
+  const aliceName = await alice.page.evaluate(() => localStorage.getItem('username') ?? '');
+  const bobName   = await bob.page.evaluate(()   => localStorage.getItem('username') ?? '');
+
+  await openDm(alice.page, roomId, bobName,   bob.userId);
+  await openDm(bob.page,   roomId, aliceName, alice.userId);
+
+  // Tving en PC til at blive oprettet på Bob (callee-rolle ved opkald → handleSignal('offer') opretter PC)
+  await alice.page.waitForSelector('#callBtn', { state: 'visible' });
+  await alice.page.click('#callBtn');
+  await bob.page.waitForSelector('#incomingCall.visible', { timeout: 10000 });
+  await bob.page.click('button:has-text("Accepter")');
+  await bob.page.waitForSelector('#activeCall.visible', { timeout: 15000 });
+  await bob.page.waitForFunction(() => (window as any).__pcs.length > 0, { timeout: 5000 });
+
+  // Simulér at Bob modtager screen-share — injicér en fake MediaStream i #remoteVideo
+  await bob.page.evaluate(() => {
+    const video = document.getElementById('remoteVideo') as HTMLVideoElement;
+    video.srcObject = new MediaStream();
+  });
+
+  const hasStream = () => bob.page.evaluate(() =>
+    !!(document.getElementById('remoteVideo') as HTMLVideoElement).srcObject
+  );
+  expect(await hasStream()).toBe(true);
+
+  // Syntetisér transient disconnect: skift connectionState til 'disconnected' og fyr event
+  await bob.page.evaluate(() => {
+    const pc = (window as any).__pcs.at(-1);
+    Object.defineProperty(pc, 'connectionState', { get: () => 'disconnected', configurable: true });
+    pc.dispatchEvent(new Event('connectionstatechange'));
+  });
+
+  // Fix verificeret: srcObject overlever transient disconnect
+  expect(await hasStream()).toBe(true);
+  await expect(bob.page.locator('#rtcStatus')).toHaveAttribute('data-state', 'disconnected');
+
+  // Permanent failed: closePeerVideo SKAL stadig fyre
+  await bob.page.evaluate(() => {
+    const pc = (window as any).__pcs.at(-1);
+    Object.defineProperty(pc, 'connectionState', { get: () => 'failed', configurable: true });
+    pc.dispatchEvent(new Event('connectionstatechange'));
+  });
+
+  await expect.poll(hasStream, { timeout: 2000 }).toBe(false);
+
+  await deleteUser(alice.page, alice.token);
+  await deleteUser(bob.page, bob.token);
+});
+
 test('rtcDump() returnerer null når intet PC findes', async ({ browser }) => {
   const pw = 'Password123!';
   const alice = await newSession(browser, uniqueUser('alice'), pw);

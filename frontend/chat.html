@@ -461,14 +461,17 @@
         logRtc('connection-state', { state, sharing, inCall });
         updateRtcStatus();
         if (state === 'connected') cancelRtcRetry();
-        if (state === 'disconnected' || state === 'failed') {
+        // disconnected er transient og kan self-recovere på ~10ms; closePeerVideo
+        // her ville rydde remoteVideo.srcObject så modtageren sad med sort skærm
+        // selv efter forbindelsen var tilbage. Kun failed (permanent) tearer ned.
+        if (state === 'failed') {
           closePeerVideo();
           if (inCall) hangUp();
-          if (sharing) {
-            // failed: permanent — retry after 2s; disconnected: transient — give browser 10s to self-recover first
-            const delay = state === 'failed' ? 2000 : 10000;
-            scheduleRtcRetry(delay, `connection-state=${state}`);
-          }
+        }
+        if ((state === 'disconnected' || state === 'failed') && sharing) {
+          // failed: permanent — retry after 2s; disconnected: transient — give browser 10s to self-recover first
+          const delay = state === 'failed' ? 2000 : 10000;
+          scheduleRtcRetry(delay, `connection-state=${state}`);
         }
       };
 
