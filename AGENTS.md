@@ -11,6 +11,12 @@ This file provides guidance to AI coding agents working in this repository.
 @.guidelines/testing-and-docs.md
 @.guidelines/process.md
 
+## Workflow
+
+`scripts/check.sh` kører semantisk review af staged ændringer mod guidelines og ADRs ovenfor. Det køres automatisk som pre-commit hook ved hvert commit.
+
+Kør manuelt: `bash scripts/check.sh`
+
 ## Project Overview
 
 IPFS-hosted static frontend combined with a self-hosted backend on a VPS. The frontend is served via DNSLink (own domain mapped to an IPFS CID), which gives a stable origin for CORS.
