@@ -1,9 +1,11 @@
 import { expect, test, Browser, Page } from '@playwright/test';
 import { mockConfig, uniqueName } from './helpers';
 
-async function newParticipant(browser: Browser) {
+async function newParticipant(browser: Browser, noAutoMic = false) {
   const ctx = await browser.newContext({ permissions: ['microphone', 'camera'] });
-  await ctx.addInitScript(() => sessionStorage.setItem('loft.noAutoMic', '1'));
+  if (noAutoMic) {
+    await ctx.addInitScript(() => sessionStorage.setItem('loft.noAutoMic', '1'));
+  }
   const page = await ctx.newPage();
   await mockConfig(page);
   return { ctx, page };
@@ -35,14 +37,9 @@ async function expectConnected(page: Page) {
   }, undefined, { timeout: 15000 });
 }
 
-async function enableMic(page: Page) {
-  await page.click('#micBtn');
-  await expect(page.locator('#micBtn')).toHaveText('Sluk mikrofon');
-}
-
 test('to deltagere forbinder — lyd når frem', async ({ browser }) => {
   const alice = await newParticipant(browser);
-  const bob = await newParticipant(browser);
+  const bob = await newParticipant(browser, true);
 
   const id = await createLoft(alice.page, uniqueName('alice'));
   await joinLoft(bob.page, uniqueName('bob'), id);
@@ -54,17 +51,18 @@ test('to deltagere forbinder — lyd når frem', async ({ browser }) => {
   await expect(alice.page.locator('#grid .participant-card')).toHaveCount(1);
   await expect(bob.page.locator('#grid .participant-card')).toHaveCount(1);
 
-  // Mikrofoner startes sekventielt (ikke samtidigt) for at undgå offer-glare
-  // mellem to nye deltagere — samme sti som skærmdelingstesten.
-  await enableMic(alice.page);
+  // Alice's auto-mikrofon etablerede forbindelsen — Bob modtager hendes lyd.
   await expect(bob.page.locator('#grid audio')).toHaveCount(1, { timeout: 10000 });
-  await enableMic(bob.page);
+
+  // Bob starter sin mikrofon sekventielt (ingen offer-glare) — Alice hører ham.
+  await bob.page.click('#micBtn');
+  await expect(bob.page.locator('#micBtn')).toHaveText('Sluk mikrofon');
   await expect(alice.page.locator('#grid audio')).toHaveCount(1, { timeout: 10000 });
 });
 
 test('forlad → leave → rejoin', async ({ browser }) => {
   const alice = await newParticipant(browser);
-  const bob = await newParticipant(browser);
+  const bob = await newParticipant(browser, true);
 
   const id = await createLoft(alice.page, uniqueName('alice'));
   await joinLoft(bob.page, uniqueName('bob'), id);
@@ -89,7 +87,7 @@ test('link åbnes fra frisk kontekst (ny deltager)', async ({ browser }) => {
   const id = await createLoft(alice.page, uniqueName('alice'));
 
   const origin = await alice.page.evaluate(() => location.origin);
-  const carol = await newParticipant(browser);
+  const carol = await newParticipant(browser, true);
   await carol.page.goto(`${origin}/loft.html?id=${id}`);
   await carol.page.fill('#nameInput', uniqueName('carol'));
   await carol.page.click('#joinBtn');
@@ -103,7 +101,7 @@ test('link åbnes fra frisk kontekst (ny deltager)', async ({ browser }) => {
 
 test('skærmdeling når frem (fake stream)', async ({ browser }) => {
   const alice = await newParticipant(browser);
-  const bob = await newParticipant(browser);
+  const bob = await newParticipant(browser, true);
 
   const id = await createLoft(alice.page, uniqueName('alice'));
   await joinLoft(bob.page, uniqueName('bob'), id);
