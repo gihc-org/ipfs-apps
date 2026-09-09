@@ -12,6 +12,9 @@ pub struct Loft {
     pub name: String,
     pub created_at: DateTime<Utc>,
     pub last_active: DateTime<Utc>,
+    /// Kun til skaberen — eksponeres aldrig i API-svar (GET).
+    #[serde(skip)]
+    pub owner_token: Option<Uuid>,
 }
 
 /// En gæst der aktuelt er forbundet til et loft. Findes kun i hukommelsen

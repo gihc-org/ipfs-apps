@@ -123,6 +123,7 @@
         <button id="camBtn" class="secondary">Tænd kamera</button>
         <button id="screenBtn" class="secondary">Del skærm</button>
         <button id="inviteBtn" class="secondary">Inviter</button>
+        <button id="closeBtn" class="danger" hidden>Luk loft</button>
         <button id="leaveBtn" class="danger">Forlad</button>
       </div>
 
@@ -175,6 +176,7 @@
       loftName: '',
       name: '',
       selfId: null,
+      ownerToken: null,
       cells: new Map(),
       micStream: null,
       camStream: null,
@@ -232,6 +234,14 @@
       return name.length >= 1 && name.length <= 50 ? name : null;
     }
 
+    function ownerKey(id) {
+      return 'loft.owner.' + id;
+    }
+
+    function updateCloseButton() {
+      $('closeBtn').hidden = !state.ownerToken;
+    }
+
     // ── Lobby ───────────────────────────────────────────────────────────────
 
     async function createLoft() {
@@ -246,6 +256,7 @@
         });
         const body = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(body.detail || `Fejl ${res.status}`);
+        localStorage.setItem(ownerKey(body.id), body.owner_token);
         enterLoft(body.id, name);
       } catch (e) {
         showLobbyError(e.message || 'Kunne ikke oprette loftet');
@@ -276,12 +287,14 @@
         state.loftName = meta.name;
         state.name = name;
         state.leaving = false;
+        state.ownerToken = localStorage.getItem(ownerKey(id));
 
         lobby.hidden = true;
         room.hidden = false;
         roomLabel.textContent = meta.name;
         youLabel.textContent = `Du deltager som ${name}`;
         disableControls(true);
+        updateCloseButton();
         history.replaceState({}, '', location.pathname + '?id=' + id);
 
         connectWs();
@@ -349,6 +362,8 @@
         state.rtc.handleSignal(data.from.id, data.signal);
       } else if (data.type === 'media-state') {
         updateMediaBadges(data.from ? data.from.id : null, data);
+      } else if (data.type === 'closed') {
+        exitToLobby('Loftet er lukket af ejeren.');
       }
     }
 
@@ -608,7 +623,7 @@
     }
 
     function disableControls(disabled) {
-      for (const btn of [micBtn, camBtn, screenBtn, inviteBtn]) {
+      for (const btn of [micBtn, camBtn, screenBtn, inviteBtn, $('closeBtn')]) {
         btn.disabled = disabled;
       }
     }
@@ -646,7 +661,7 @@
 
     // ── Forlad ─────────────────────────────────────────────────────────────
 
-    function leaveLoft() {
+    function exitToLobby(message) {
       state.leaving = true;
       clearTimeout(state.retryTimer);
       if (state.ws) state.ws.close();
@@ -665,8 +680,31 @@
 
       room.hidden = true;
       lobby.hidden = false;
+      lobbyError.textContent = message || '';
       statusEl.textContent = '';
+      updateCloseButton();
       history.replaceState({}, '', location.pathname);
+    }
+
+    async function closeLoft() {
+      if (!state.ownerToken) return;
+      const ok = window.confirm('Luk loftet? Deltagere smides ud, og linket holder op med at virke.');
+      if (!ok) return;
+      try {
+        const res = await fetch(apiBase() + '/v1/lofts/' + state.loftId, {
+          method: 'DELETE',
+          headers: { 'X-Owner-Token': state.ownerToken },
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.detail || 'Kunne ikke lukke loftet');
+        }
+        localStorage.removeItem(ownerKey(state.loftId));
+        state.ownerToken = null;
+        exitToLobby('Loftet er lukket.');
+      } catch (e) {
+        setStatus(e.message || 'Kunne ikke lukke loftet', true);
+      }
     }
 
     // ── Events ─────────────────────────────────────────────────────────────
@@ -677,7 +715,8 @@
     camBtn.addEventListener('click', toggleCam);
     screenBtn.addEventListener('click', toggleScreen);
     $('inviteBtn').addEventListener('click', showInvite);
-    $('leaveBtn').addEventListener('click', leaveLoft);
+    $('closeBtn').addEventListener('click', closeLoft);
+    $('leaveBtn').addEventListener('click', () => exitToLobby());
     $('copyInvite').addEventListener('click', copyInvite);
     shareInviteBtn.addEventListener('click', shareInvite);
     $('closeInvite').addEventListener('click', () => { inviteModal.hidden = true; });

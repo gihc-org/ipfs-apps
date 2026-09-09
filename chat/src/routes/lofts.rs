@@ -5,7 +5,7 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         Path, State,
     },
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::Response,
     Json,
 };
@@ -56,18 +56,27 @@ pub async fn create(
         }
     };
 
-    let loft = sqlx::query_as::<_, Loft>("INSERT INTO lofts (name) VALUES ($1) RETURNING *")
-        .bind(&name)
-        .fetch_one(&state.db)
-        .await
-        .map_err(|_| err(StatusCode::INTERNAL_SERVER_ERROR, "Kunne ikke oprette loft"))?;
+    let owner_token = Uuid::new_v4();
+    let loft = sqlx::query_as::<_, Loft>(
+        "INSERT INTO lofts (name, owner_token) VALUES ($1, $2) RETURNING *",
+    )
+    .bind(&name)
+    .bind(owner_token)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|_| err(StatusCode::INTERNAL_SERVER_ERROR, "Kunne ikke oprette loft"))?;
 
     let url = format!("/loft.html?id={}", loft.id);
     tracing::info!(loft_id = %loft.id, name = %loft.name, "loft created");
 
     Ok((
         StatusCode::CREATED,
-        Json(json!({"id": loft.id, "name": loft.name, "url": url})),
+        Json(json!({
+            "id": loft.id,
+            "name": loft.name,
+            "url": url,
+            "owner_token": loft.owner_token,
+        })),
     ))
 }
 
@@ -89,6 +98,51 @@ pub async fn get(
         .map_err(|_| err(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
         .ok_or_else(|| err(StatusCode::NOT_FOUND, "Loftet findes ikke"))?;
     Ok(Json(loft))
+}
+
+/// `DELETE /v1/lofts/:id` — lukker loftet permanent (kun med ejer-nøgle).
+///
+/// Nøglen sendes i `X-Owner-Token`-headeren og returneres kun ved oprettelse.
+/// Aktivt forbundne klienter får broadcastet `{"type":"closed"}` og forlader
+/// selv loftet.
+pub async fn close(
+    State(state): State<AppState>,
+    Path(loft_id): Path<Uuid>,
+    headers: HeaderMap,
+) -> Result<StatusCode, ApiError> {
+    let Some(token_str) = headers.get("x-owner-token").and_then(|v| v.to_str().ok()) else {
+        return Err(err(StatusCode::FORBIDDEN, "Ugyldig ejer-nøgle"));
+    };
+    let Ok(token) = Uuid::parse_str(token_str) else {
+        return Err(err(StatusCode::FORBIDDEN, "Ugyldig ejer-nøgle"));
+    };
+
+    let loft = sqlx::query_as::<_, Loft>("SELECT * FROM lofts WHERE id = $1")
+        .bind(loft_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|_| err(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
+        .ok_or_else(|| err(StatusCode::NOT_FOUND, "Loftet findes ikke"))?;
+
+    if loft.owner_token != Some(token) {
+        return Err(err(StatusCode::FORBIDDEN, "Ugyldig ejer-nøgle"));
+    }
+
+    let deleted = sqlx::query("DELETE FROM lofts WHERE id = $1")
+        .bind(loft_id)
+        .execute(&state.db)
+        .await
+        .map_err(|_| err(StatusCode::INTERNAL_SERVER_ERROR, "Kunne ikke lukke loftet"))?;
+    if deleted.rows_affected() == 0 {
+        return Err(err(StatusCode::NOT_FOUND, "Loftet findes ikke"));
+    }
+
+    // Giv aktive deltagere besked om at loftet er lukket.
+    let channel = state::get_or_create_channel(&state.loft_channels, loft_id).await;
+    let _ = channel.send(json!({"type": "closed"}).to_string());
+
+    tracing::info!(loft_id = %loft_id, "loft closed by owner");
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// `GET /v1/ws/:loft_id` — WebSocket-håndtryk for et loft.

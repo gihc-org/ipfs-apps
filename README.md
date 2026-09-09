@@ -12,7 +12,7 @@ linket er adgangsnøglen, og deltageren vælger selv et navn.
 ## Koncept
 
 - **Plan B-modellen:** et loft lever videre efter at skaberen går, indtil det
-  lukkes eller udløber via TTL (default 168 timer uden aktivitet).
+  lukkes af ejeren eller udløber via TTL (default 168 timer uden aktivitet).
 - **Gæsteadgang:** ingen brugerkonti, JWT, email eller CAPTCHA. Et loft-id
   (tilfældig UUID) er tilstrækkelig adgangsnøgle — del det kun med dem der skal
   ind.
@@ -56,6 +56,7 @@ TODO.md              Backlog (M0–M5)
 | GET | `/healthz` | Liveness til k8s-probes |
 | POST | `/v1/lofts` | Opret loft → `{ id, name, url }` (rate-limited) |
 | GET | `/v1/lofts/:id` | Metadata (findes loftet?) — 404 hvis væk |
+| DELETE | `/v1/lofts/:id` | Luk loftet permanent — kræver `X-Owner-Token` |
 | WS | `/v1/ws/:loft_id` | WebSocket: join/roster/signalering |
 
 Oprettelse:
@@ -64,8 +65,19 @@ Oprettelse:
 curl -X POST https://<origin>/v1/lofts \
   -H 'Content-Type: application/json' \
   -d '{"name": "Morgenmøde"}'
-# → {"id":"…","name":"Morgenmøde","url":"/loft.html?id=…"}
+# → {"id":"…","name":"Morgenmøde","url":"/loft.html?id=…","owner_token":"…"}
 ```
+
+`owner_token` er kun til skaberen og gemmes i browseren (localStorage) — den
+indgår aldrig i det link du deler, og GET lækker den ikke. Lukning:
+
+```bash
+curl -X DELETE https://<origin>/v1/lofts/<id> \
+  -H 'X-Owner-Token: <owner_token>'
+```
+
+Aktivt forbundne klienter modtager `{"type":"closed"}` og vender tilbage til
+lobbyen.
 
 ### WebSocket-protokol
 

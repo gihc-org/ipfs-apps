@@ -71,7 +71,10 @@ pub fn build_app(state: AppState) -> Router {
 
     let v1 = Router::new()
         .merge(loft_routes)
-        .route("/lofts/:id", get(routes::lofts::get))
+        .route(
+            "/lofts/:id",
+            get(routes::lofts::get).delete(routes::lofts::close),
+        )
         .route("/ws/:loft_id", get(routes::lofts::ws_handler));
 
     Router::new()

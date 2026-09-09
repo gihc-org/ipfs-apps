@@ -166,6 +166,10 @@ async fn create_loft_returns_id_and_url(pool: PgPool) {
     let id = body["id"].as_str().unwrap();
     assert!(body["name"].as_str().unwrap().contains("Morgenmøde"));
     assert_eq!(body["url"], format!("/loft.html?id={id}"));
+    assert!(
+        body["owner_token"].is_string(),
+        "skaberen skal modtage ejer-nøgle"
+    );
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -200,6 +204,10 @@ async fn get_loft_returns_metadata(pool: PgPool) {
     assert_eq!(body["name"], "Planlægning");
     assert!(body["created_at"].is_string());
     assert!(body["last_active"].is_string());
+    assert!(
+        body.get("owner_token").is_none(),
+        "ejer-nøgle må aldrig eksponeres via GET"
+    );
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -214,6 +222,46 @@ async fn get_unknown_loft_returns_404(pool: PgPool) {
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert_eq!(body["detail"], "Loftet findes ikke");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn close_loft_requires_owner_token(pool: PgPool) {
+    let app = build_app(test_state(pool));
+    let (status, body) = api(&app, "POST", "/v1/lofts", Some(json!({"name": "Lukbar"}))).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let id = body["id"].as_str().unwrap().to_string();
+    let token = body["owner_token"].as_str().unwrap().to_string();
+
+    // Uden nøgle og med forkert nøgle afvises.
+    let (status, _) = api(&app, "DELETE", &format!("/v1/lofts/{id}"), None).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = api_delete(
+        &app,
+        &format!("/v1/lofts/{id}"),
+        "00000000-0000-0000-0000-000000000000",
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // Med korrekt nøgle lukkes loftet og linket dør.
+    let (status, _) = api_delete(&app, &format!("/v1/lofts/{id}"), &token).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, _) = api(&app, "GET", &format!("/v1/lofts/{id}"), None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+async fn api_delete(app: &axum::Router, path: &str, owner_token: &str) -> (StatusCode, Value) {
+    let req = Request::builder()
+        .method("DELETE")
+        .uri(path)
+        .header("x-owner-token", owner_token)
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    let status = resp.status();
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let value: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+    (status, value)
 }
 
 // ── WebSocket: join/roster ─────────────────────────────────────────────────
