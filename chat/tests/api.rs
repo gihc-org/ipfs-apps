@@ -81,8 +81,13 @@ async fn api(
 }
 
 async fn create_loft(app: &axum::Router, name: Option<&str>) -> String {
-    let body = name.map(|n| json!({"name": n}));
-    let (status, resp) = api(app, "POST", "/v1/lofts", body).await;
+    let body = match name {
+        Some(n) => json!({"name": n}),
+        // Altid et JSON-objekt (Content-Type sættes af api()-helperen) —
+        // ellers afviser Axums Json-extractor med 415.
+        None => json!({}),
+    };
+    let (status, resp) = api(app, "POST", "/v1/lofts", Some(body)).await;
     assert_eq!(status, StatusCode::CREATED, "create loft failed: {resp}");
     resp["id"].as_str().unwrap().to_string()
 }
