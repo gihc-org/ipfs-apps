@@ -93,6 +93,8 @@ pub fn build_cors(allowed_origin: &str) -> CorsLayer {
     let headers = [
         axum::http::header::AUTHORIZATION,
         axum::http::header::CONTENT_TYPE,
+        // Custom header brugt af DELETE /v1/lofts/:id (luk loft)
+        axum::http::header::HeaderName::from_static("x-owner-token"),
     ];
 
     if allowed_origin == "*" {
