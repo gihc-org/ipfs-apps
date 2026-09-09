@@ -36,7 +36,8 @@ async fn main() {
     }
 
     let app = build_app(state);
-    let addr = "0.0.0.0:8080";
+    let port = std::env::var("PORT").unwrap_or_else(|_| "8080".into());
+    let addr = format!("0.0.0.0:{port}");
     tracing::info!("Listening on {addr}");
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
