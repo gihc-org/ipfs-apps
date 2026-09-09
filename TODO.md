@@ -30,7 +30,7 @@ genbruges.
 - [x] Rate limiting på loft-oprettelse (tower_governor, XFF-baseret)
 - [x] Fjern auth-, room-, DM-, file- og uploads-stier fra routeren i takt med
       at WS'eren er omskrevet
-- [ ] Integrationstests kørt mod lokal PostgreSQL
+- [x] Integrationstests kørt mod lokal PostgreSQL (13/13 grønne)
 - [x] Dockerfile: non-root-bruger (uid 10001); read-only rootfs i k8s-manifest
 
 ## M2 — Frontend: Loft-UI
