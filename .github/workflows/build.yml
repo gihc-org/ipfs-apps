@@ -110,7 +110,7 @@ jobs:
         working-directory: e2e
         env:
           BASE_URL: http://localhost:8888
-          TEST_API_URL: http://localhost:8080/v1
+          TEST_API_URL: http://localhost:8080
         run: npx playwright test
 
       - name: Upload e2e artifacts on failure

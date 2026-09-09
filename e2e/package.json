@@ -4,9 +4,9 @@
   "scripts": {
     "postinstall": "node scripts/install-browsers.js",
     "test": "playwright test",
-    "test:local": "TEST_API_URL=http://localhost:8081/v1 playwright test",
-    "test:test": "BASE_URL=https://loft.test.gihc.online TEST_API_URL=https://loft.test.gihc.online/v1 playwright test",
-    "test:beta": "BASE_URL=https://loft.gihc.online TEST_API_URL=https://loft.gihc.online/v1 playwright test",
+    "test:local": "TEST_API_URL=http://localhost:8081 playwright test",
+    "test:test": "BASE_URL=https://loft.test.gihc.online TEST_API_URL=https://loft.test.gihc.online playwright test",
+    "test:beta": "BASE_URL=https://loft.gihc.online TEST_API_URL=https://loft.gihc.online playwright test",
     "test:headed": "playwright test --headed",
     "test:ui": "playwright test --ui"
   },
