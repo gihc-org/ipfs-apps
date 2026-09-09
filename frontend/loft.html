@@ -250,6 +250,20 @@
       $('lobbyCloseBtn').hidden = !(state.ownerToken && state.loftId);
     }
 
+    // Debug/e2e-hook: live-øjebliksbillede af mesh-forbindelserne.
+    window.__loftDebug = () => {
+      const peers = state.rtc
+        ? [...state.rtc.peers.values()].map((p) => ({
+            id: p.id,
+            name: p.name,
+            connectionState: p.pc.connectionState,
+            send: p.pc.getSenders().map((s) => s.track?.kind).filter(Boolean),
+            recv: p.pc.getReceivers().map((r) => r.track.kind),
+          }))
+        : [];
+      return { selfId: state.selfId, peers, micOn: state.micOn, screenOn: state.screenOn };
+    };
+
     // ── Lobby ───────────────────────────────────────────────────────────────
 
     async function createLoft() {
@@ -622,6 +636,30 @@
         broadcastMediaState();
       }
     }
+
+    // Test-hook (e2e): start en canvas-stream i stedet for getDisplayMedia —
+    // samme RTC-sti (addMedia → renegotiation), uden OS-dialog.
+    window.__loftStartFakeScreen = async () => {
+      if (!state.rtc || state.screenOn) return;
+      const canvas = document.createElement('canvas');
+      canvas.width = 320;
+      canvas.height = 180;
+      const ctx = canvas.getContext('2d');
+      let frame = 0;
+      window.__loftFakeScreenTimer = setInterval(() => {
+        frame += 1;
+        if (!ctx) return;
+        ctx.fillStyle = '#123';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#fff';
+        ctx.fillText(`Loft test ${frame}`, 16, 90);
+      }, 250);
+      state.screenStream = canvas.captureStream(10);
+      state.screenOn = true;
+      state.rtc.addMedia('screen', state.screenStream);
+      updateControlButtons();
+      broadcastMediaState();
+    };
 
     function cleanupSessionMedia() {
       clearCells();

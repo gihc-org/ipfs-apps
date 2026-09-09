@@ -1,44 +1,26 @@
 import { Page } from '@playwright/test';
 
-export const API_URL = process.env.TEST_API_URL ?? 'http://localhost:8001/v1';
-const WS_URL = API_URL.replace('https://', 'wss://').replace('http://', 'ws://');
+// Lokalt forventes backenden at køre (fx PORT=8081) — pej på den med
+// TEST_API_URL. I CI/deploy peges der på miljøets origin.
+export const API_URL = (process.env.TEST_API_URL ?? 'http://localhost:8080/v1').replace(/\/$/, '');
+const API_BASE = API_URL.replace(/\/v1$/, '');
+const WS_URL = API_BASE.replace(/^http/, 'ws');
 
-// Intercept config.js so the frontend points to the test API, not prod.
+// Overskriver config.js så frontenden peger på test-API'et, ikke prod.
 export async function mockConfig(page: Page) {
-  await page.route('**/config.js', route => route.fulfill({
-    contentType: 'application/javascript',
-    body: `
-      const API_URL = '${API_URL}';
-      const WS_URL  = '${WS_URL}';
-      const TURNSTILE_SITE_KEY = '';
-    `,
-  }));
+  await page.route('**/config.js', (route) =>
+    route.fulfill({
+      contentType: 'application/javascript',
+      body: `
+        const API_URL = '${API_URL}';
+        const WS_URL = '${WS_URL}';
+        const TURN_URL = '';
+        const TURN_SECRET = '';
+      `,
+    }),
+  );
 }
 
-export async function register(page: Page, username: string, password: string) {
-  // Bypass UI to avoid Turnstile — backend skips CAPTCHA when TURNSTILE_SECRET is empty.
-  await page.request.post(`${API_URL}/auth/register`, {
-    data: { username, password, email: `${username}@test.example`, turnstile_token: 'test' },
-  });
-}
-
-export async function login(page: Page, username: string, password: string) {
-  await mockConfig(page);
-  await page.goto('/');
-  await page.fill('#loginUsername', username);
-  await page.fill('#loginPassword', password);
-  await page.click('#loginForm button[type=submit]');
-  await page.waitForURL('**/rooms.html');
-}
-
-export function uniqueUser(prefix = 'user') {
+export function uniqueName(prefix = 'deltager') {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-}
-
-export async function deleteUser(page: Page, token?: string) {
-  const tok = token ?? await page.evaluate(() => localStorage.getItem('token'));
-  if (!tok) return;
-  await page.request.delete(`${API_URL}/auth/me`, {
-    headers: { Authorization: `Bearer ${tok}` },
-  }).catch(() => {});
 }

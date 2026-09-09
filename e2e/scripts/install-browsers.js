@@ -13,8 +13,11 @@ const SYSTEM_CHROMIUM = [
 ].find(p => fs.existsSync(p));
 
 if (!SYSTEM_CHROMIUM) {
-  console.error('System Chromium not found. Install with: sudo apt install chromium-browser');
-  process.exit(1);
+  console.error(
+    'System Chromium not found — skipping symlink. ' +
+    'Use "npx playwright install --with-deps chromium" in CI.',
+  );
+  process.exit(0);
 }
 
 const browsersJsonPath = require.resolve('playwright-core').replace(/index\.js$/, 'browsers.json');
