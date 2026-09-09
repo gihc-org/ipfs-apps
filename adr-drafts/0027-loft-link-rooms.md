@@ -19,14 +19,14 @@ typisk åbner linket på et andet tidspunkt end afsenderen.
 
 ## Beslutning
 
-- **Loft er et link-rum med gæsteadgang.** Huddle-URL'en (tilfældig UUID) er
+- **Loft er et link-rum med gæsteadgang.** Loft-URL'en (tilfældig UUID) er
   adgangsnøgle; der er ingen konti, JWT, email-verifikation eller CAPTCHA i
   MVP. Deltageren vælger selv et vist navn ved join.
 - **Frontend serveres som statisk nginx-image** pr. miljø med `config.js`
   mountet som ConfigMap. IPFS/DNSLink og kubo udgår.
 - **Ét origin pr. miljø:** frontend, REST (`/v1`) og WebSocket deler host
   (`loft.test.gihc.online`), så CORS/CSP-par-koblingen forsvinder.
-- **En lille PostgreSQL-instans pr. miljø-namespace** gemmer kun huddles
+- **En lille PostgreSQL-instans pr. miljø-namespace** gemmer kun lofts
   (id, navn, created_at, last_active). Deltagere, presence og signalering er
   in-memory → én replica.
 - **coturn kører som `hostNetwork`-Deployment** med firewall-regler i
@@ -39,7 +39,7 @@ typisk åbner linket på et andet tidspunkt end afsenderen.
 - **Behold IPFS/DNSLink:** bevarer projektets IPFS-identitet, men tilføjer
   kubo-pod, PVC og DNSLink-deploy i CI — kompleksitet uden produktværdi for et
   link-rum. Vælges fra.
-- **Live-huddle (Slack-model):** rummet lukker når sidste deltager går. Giver
+- **Live-loft (Slack-model):** rummet lukker når sidste deltager går. Giver
   minimal persistens (endda ingen postgres), men gør mail-deling ubrugelig.
 - **Konti/JWT:** genbruger eksisterende auth-stak, men giver friktion ved
   link-deling til folk uden konto og øger GDPR-overfladen. Udskydes til fase 2.

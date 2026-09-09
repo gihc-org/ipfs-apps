@@ -6,7 +6,7 @@ metadata:
   annotations:
     # Start staging → verificér cert → skift til letsencrypt-prod.
     cert-manager.io/cluster-issuer: letsencrypt-staging
-    # WebSocket på /v1/ws/:huddle_id er langlivet.
+    # WebSocket på /v1/ws/:loft_id er langlivet.
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
 spec:

@@ -26,7 +26,7 @@ Forudsætninger og platform-tilstand står i `../infra/MIGRATION.md` — vigtigs
 1. **Produkt:** kun Loft. Chat-rum, DM, filoverførsel, konti og IPFS fjernes
    fra den aktive sti i M1–M5 (git-historik bevares). Navn, domæne og image
    hedder `loft`.
-2. **Gæsteadgang (Plan B):** ingen konti/JWT/email i MVP. Huddle-URL'en
+2. **Gæsteadgang (Plan B):** ingen konti/JWT/email i MVP. Loft-URL'en
    (tilfældig UUID) er adgangsnøgle; deltageren vælger selv vist navn. Fase 2
    kan tilføje konti/ejerskab uden at ændre signalprotokollen.
 3. **Frontend:** statisk nginx-image pr. miljø, `config.js` mountet som
@@ -38,7 +38,7 @@ Forudsætninger og platform-tilstand står i `../infra/MIGRATION.md` — vigtigs
 5. **coturn:** beholdes — WebRTC uden TURN fejler bag NAT. Kører som
    `hostNetwork`-Deployment; firewall udvides i `infra/tofu/main.tf`:
    TCP+UDP 3478 og UDP 49152–49200.
-6. **Postgres:** én lille instans pr. miljø-namespace — kun `huddles`-tabellen
+6. **Postgres:** én lille instans pr. miljø-namespace — kun `lofts`-tabellen
    (id, navn, created_at, last_active). Deltagere, presence og signalering er
    in-memory → præcis 1 replica.
 7. **Secrets:** `postgres-password` + `database-url` i `pass` → secret
@@ -66,21 +66,21 @@ Forudsætninger og platform-tilstand står i `../infra/MIGRATION.md` — vigtigs
 0. **Dokumentation (denne gren):** TODO.md + MIGRATION.md omskrevet,
    ADR-drafts 0027/0028, `k8s/test`-skelet, GitHub Actions-workflow,
    DNS-script og frontend-Dockerfile. Intet deployet endnu.
-1. **Backend (Loft-kerne):** migration `huddles`; `POST /v1/huddles`
-   (rate-limited) og `GET /v1/huddles/:id`; WS `/v1/huddles/:id` med
+1. **Backend (Loft-kerne):** migration `lofts`; `POST /v1/lofts`
+   (rate-limited) og `GET /v1/lofts/:id`; WS `/v1/lofts/:id` med
    `join`/`leave`/`roster`/`presence`/`signal`; `/healthz`; TTL-oprydning.
    Fjern auth-, room-, DM- og file-stier fra routeren i takt med at WS'eren er
    omskrevet. Dockerfile: non-root + read-only fs (CIS-punkter i TODO).
-2. **Frontend (Loft-UI):** ny `huddle.html` (opret/deltag via link, navn,
+2. **Frontend (Loft-UI):** ny `loft.html` (opret/deltag via link, navn,
    mic/cam, skærmdeling, forlad) og `rtc.js` med mesh + perfect negotiation
    (refaktor af chat.html's ene 1:1-`RTCPeerConnection`). Genbrug ICE/TURN-
    logik og auto-reconnect. Invite: copy-link, `navigator.share`, QR.
 3. **Tests + CI:** Playwright med tre kontekster (connected, skærmdeling,
-   leave/rejoin, link fra frisk kontekst); cargo-tests for huddle-registry og
+   leave/rejoin, link fra frisk kontekst); cargo-tests for loft-registry og
    WS-signalering; workflow bygger begge images; GHCR-pakker gøres public.
 4. **Deploy test:** DNS A-record (scriptet), secret `loft-secrets`, apply
    `k8s/test`, firewall-regler i infra/tofu, `letsencrypt-staging` → verificér
-   → prod-issuer, smoke-test omskrevet til `kubectl exec` + gæste-huddle-flow.
+   → prod-issuer, smoke-test omskrevet til `kubectl exec` + gæste-loft-flow.
 5. **Beta/prod:** kopiér manifester til `k8s/prod/` (realm/domæner skiftes),
    deploy, skift DNS til `loft.gihc.online`.
 6. **Oprydning:** slet `docker-compose*.yml`, `ansible/`, `caddy/`,
@@ -98,7 +98,7 @@ Forudsætninger og platform-tilstand står i `../infra/MIGRATION.md` — vigtigs
   `Permissions-Policy` (kamera/mikrofon = self) sættes i app-laget — nginx-conf
   for web, Axum-layer for API — fordi ingress' `configuration-snippet` er slået
   fra som standard.
-- **1 replica:** in-memory huddles/presence gør flere replicas meningsløse.
+- **1 replica:** in-memory lofts/presence gør flere replicas meningsløse.
   `Recreate`-strategi bruges ved deploy (postgres-PVC + korte nedtider).
   Rolling updates dropper WS-forbindelser — frontend auto-reconnect dækker det.
 - **Databasemigrationer** kører embedded ved app-start (`sqlx::migrate!`) —

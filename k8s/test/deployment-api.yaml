@@ -5,7 +5,7 @@ metadata:
   namespace: loft-test
 spec:
   replicas: 1
-  # Huddles/presence er in-memory — flere replicas er meningsløse.
+  # Lofts/presence er in-memory — flere replicas er meningsløse.
   strategy:
     type: Recreate
   selector:

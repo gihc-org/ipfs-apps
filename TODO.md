@@ -20,14 +20,14 @@ genbruges.
 
 ## M1 — Backend: Loft-kerne
 
-- [ ] Migration: `huddles`-tabel (id, navn, created_at, last_active)
-- [ ] `POST /v1/huddles` — opret link-rum, returnér `{ id, url }`
-- [ ] `GET /v1/huddles/:id` — findes rummet? (til link-åbning)
-- [ ] WS `/v1/huddles/:id` — gæste-join med navn; `join`/`leave`/`roster`/
+- [ ] Migration: `lofts`-tabel (id, navn, created_at, last_active)
+- [ ] `POST /v1/lofts` — opret link-rum, returnér `{ id, url }`
+- [ ] `GET /v1/lofts/:id` — findes rummet? (til link-åbning)
+- [ ] WS `/v1/lofts/:id` — gæste-join med navn; `join`/`leave`/`roster`/
       `presence`/`signal`; serveren sætter `from` på signaler
 - [ ] `/healthz`-endpoint + k8s-probes
-- [ ] TTL-oprydning af inaktive huddles (baggrundsjob eller lazy)
-- [ ] Rate limiting på huddle-oprettelse (tower_governor, XFF-baseret)
+- [ ] TTL-oprydning af inaktive lofts (baggrundsjob eller lazy)
+- [ ] Rate limiting på loft-oprettelse (tower_governor, XFF-baseret)
 - [ ] Fjern auth-, room-, DM-, file- og uploads-stier fra routeren i takt med
       at WS'eren er omskrevet
 - [ ] Dockerfile: non-root-bruger (uid 10001), `no-new-privileges`,
@@ -35,7 +35,7 @@ genbruges.
 
 ## M2 — Frontend: Loft-UI
 
-- [ ] `huddle.html` — opret/deltag via link, vælg navn, mic/cam-toggle,
+- [ ] `loft.html` — opret/deltag via link, vælg navn, mic/cam-toggle,
       skærmdeling, forlad rum
 - [ ] `rtc.js` — mesh-modul med ét `RTCPeerConnection` pr. deltager og
       perfect negotiation (refaktor af chat.html's 1:1-logik)
@@ -49,7 +49,7 @@ genbruges.
 
 - [ ] Playwright: tre kontekster i samme rum — connected, skærmdeling,
       leave/rejoin, link åbnet fra frisk kontekst
-- [ ] Cargo-tests: huddle-registry og WS-signalering
+- [ ] Cargo-tests: loft-registry og WS-signalering
 - [ ] `.github/workflows/build.yml` bygger `loft` + `loft-web` (SHA-tags)
 - [ ] GHCR-pakker gøres public
 - [ ] E2e kører mod `loft.test.gihc.online` før prod-promote
@@ -61,7 +61,7 @@ genbruges.
 - [ ] Apply `k8s/test/` (postgres, api, web, ingress, coturn)
 - [ ] Firewall i `infra/tofu/main.tf`: TCP+UDP 3478, UDP 49152–49200
 - [ ] `letsencrypt-staging` → verificér cert → `letsencrypt-prod`
-- [ ] Smoke-test omskrevet til `kubectl exec` + gæste-huddle-flow
+- [ ] Smoke-test omskrevet til `kubectl exec` + gæste-loft-flow
 - [ ] Manifester for beta/prod i `k8s/prod/`
 
 ## M5 — Oprydning
@@ -76,10 +76,10 @@ genbruges.
 
 ## Sikkerhed (videreført fra chat)
 
-- [ ] Rate limiting på huddle-oprettelse og WS-håndtryk
+- [ ] Rate limiting på loft-oprettelse og WS-håndtryk
 - [ ] Capability-link er tilfældig UUID; verificér at ingress-logs ikke
       logger query/fragment med hvis tokens indføres
-- [ ] Link-expiry/revocation (TTL på huddles)
+- [ ] Link-expiry/revocation (TTL på lofts)
 - [ ] CSP: `default-src 'self'`, kamera/mikrofon via `Permissions-Policy`,
       ingen tredjeparts-scripts (Turnstile udgår)
 - [ ] Containerhærdning: non-root, read-only fs, `no-new-privileges`
@@ -89,5 +89,5 @@ genbruges.
 ## GDPR (forenklet)
 
 - [x] Ingen konti, emails eller beskedhistorik i MVP — minimal persondata
-- [ ] Dokumentér opbevaring: huddles-tabel (navn + tidsstempler) med TTL;
+- [ ] Dokumentér opbevaring: lofts-tabel (navn + tidsstempler) med TTL;
       deltagernavne findes kun i hukommelsen under sessionen
