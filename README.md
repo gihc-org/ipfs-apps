@@ -146,6 +146,22 @@ cd chat && DATABASE_URL=postgres://postgres:postgres@localhost:5432 cargo test
 
 `#[sqlx::test]` opretter en midlertidig database pr. test og dropper den igen.
 
+### Manuel test på én maskine
+
+Loft er bygget til at testes med to vinduer på samme maskine, men der er to
+fælder:
+
+- **Feedback:** to vinduer med højttalere + mikrofon i samme rum skaber en
+  lydsløjfe (konstant summen/hylen), uanset hvor god mikrofonen er. Brug
+  headset som input (eller helt luk højttalerne af) under testen. Headset som
+  input og højttalere som output fungerer fint.
+- **Forskellige deltagere:** vinduer i samme browser-profil deler localStorage
+  (navn, ejer-nøgle, tilladelser). Åbn vindue 2 i et inkognitovindue eller en
+  anden browser, så I kan optræde som to forskellige deltagere.
+
+Den støj- og tilladelsesfri test kommer fra Playwright-e2e med falske medier —
+se `e2e/`.
+
 ## Deploy (k3s)
 
 Planen står i [MIGRATION.md](MIGRATION.md). Kort fortalt:
