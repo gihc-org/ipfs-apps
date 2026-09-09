@@ -112,6 +112,7 @@
         <button id="createBtn">Opret loft</button>
         <button id="joinBtn" class="secondary">Deltag</button>
       </div>
+      <button id="lobbyCloseBtn" class="danger" hidden style="margin-top:12px">Luk dette loft</button>
       <div id="lobbyError" class="error"></div>
     </section>
 
@@ -238,8 +239,15 @@
       return 'loft.owner.' + id;
     }
 
+    const NAME_KEY = 'loft.name';
+
+    function rememberName(name) {
+      if (name) localStorage.setItem(NAME_KEY, name);
+    }
+
     function updateCloseButton() {
       $('closeBtn').hidden = !state.ownerToken;
+      $('lobbyCloseBtn').hidden = !(state.ownerToken && state.loftId);
     }
 
     // ── Lobby ───────────────────────────────────────────────────────────────
@@ -257,6 +265,7 @@
         const body = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(body.detail || `Fejl ${res.status}`);
         localStorage.setItem(ownerKey(body.id), body.owner_token);
+        rememberName(name);
         enterLoft(body.id, name);
       } catch (e) {
         showLobbyError(e.message || 'Kunne ikke oprette loftet');
@@ -288,6 +297,7 @@
         state.name = name;
         state.leaving = false;
         state.ownerToken = localStorage.getItem(ownerKey(id));
+        rememberName(name);
 
         lobby.hidden = true;
         room.hidden = false;
@@ -363,7 +373,7 @@
       } else if (data.type === 'media-state') {
         updateMediaBadges(data.from ? data.from.id : null, data);
       } else if (data.type === 'closed') {
-        exitToLobby('Loftet er lukket af ejeren.');
+        exitToLobby('Loftet er lukket af ejeren.', true);
       }
     }
 
@@ -661,7 +671,7 @@
 
     // ── Forlad ─────────────────────────────────────────────────────────────
 
-    function exitToLobby(message) {
+    function exitToLobby(message, clearLoft = false) {
       state.leaving = true;
       clearTimeout(state.retryTimer);
       if (state.ws) state.ws.close();
@@ -675,7 +685,11 @@
       if (state.camStream) state.camStream.getTracks().forEach((t) => t.stop());
       state.micStream = state.camStream = null;
       state.micOn = state.camOn = state.screenOn = state.micStarted = false;
-      state.loftId = state.loftName = state.name = null;
+      if (clearLoft) {
+        localStorage.removeItem(ownerKey(state.loftId));
+        state.loftId = state.loftName = null;
+        state.ownerToken = null;
+      }
       updateControlButtons();
 
       room.hidden = true;
@@ -683,7 +697,8 @@
       lobbyError.textContent = message || '';
       statusEl.textContent = '';
       updateCloseButton();
-      history.replaceState({}, '', location.pathname);
+      const query = state.loftId ? '?id=' + state.loftId : '';
+      history.replaceState({}, '', location.pathname + query);
     }
 
     async function closeLoft() {
@@ -701,7 +716,7 @@
         }
         localStorage.removeItem(ownerKey(state.loftId));
         state.ownerToken = null;
-        exitToLobby('Loftet er lukket.');
+        exitToLobby('Loftet er lukket.', true);
       } catch (e) {
         setStatus(e.message || 'Kunne ikke lukke loftet', true);
       }
@@ -728,7 +743,25 @@
       if (e.key === 'Enter') joinLoftFromInput();
     });
 
+    // Navn og ejer-nøgle overlever genindlæsning.
+    const rememberedName = localStorage.getItem(NAME_KEY) || '';
+    if (rememberedName) nameInput.value = rememberedName;
+
+    if (initialId) {
+      const token = localStorage.getItem(ownerKey(initialId));
+      if (token) {
+        state.loftId = initialId;
+        state.ownerToken = token;
+      }
+    }
+    updateCloseButton();
+
     if (initialId) nameInput.focus();
+
+    // Genåbn loftet automatisk hvis linket og et gemt navn findes.
+    if (initialId && rememberedName) {
+      enterLoft(initialId, rememberedName);
+    }
   </script>
 </body>
 </html>
