@@ -1,174 +1,121 @@
-# Migration af ipfs-apps til k3s — plan
+# Migration af chat til k3s + refokus til Loft — plan
 
-Udarbejdet 2026-07-25. Forudsætninger og overordnet tilstand står i
-`../infra/MIGRATION.md` — det vigtigste herfra:
+Status: 2026-09-09 · branch `feat/loft-k3s-refocus`
+
+Dette dokument afløser den tidligere k3s-plan (2026-08-01) og er skrevet sammen
+med beslutningen om at fokusere projektet: chat-appen bliver **Loft** — WebRTC
+link-rum (lyd, video og skærmdeling) med gæsteadgang, hvor man deler et link via
+Matrix, XMPP eller mail. Modellen er "Plan B" fra den tidligere plan: rummet
+lever videre efter at skaberen går, indtil det lukkes eller udløber, og URL'en
+er adgangsnøglen.
+
+Forudsætninger og platform-tilstand står i `../infra/MIGRATION.md` — vigtigst:
 
 - Platformen (ingress-nginx, cert-manager, local-path-storage,
   secrets-encryption) er klar og bevist af hyfer og capture.
 - **Der er ingen data at migrere.** Den gamle server blev slettet 2026-07-04
-  før clusteret blev bygget; postgres-data, uploads og IPFS-repoet er væk.
-  Migrationen er reelt en frisk deploy — ingen pg_dump/restore, ingen
-  volume-kopi.
+  før clusteret blev bygget. Migrationen er reelt en frisk deploy.
 - Etableret mønster (hyfer, capture): app-repoet ejer sine egne manifester i
   `k8s/`, images bygges i GitHub Actions og pushes til GHCR som public
   packages, secrets hentes fra `pass` og oprettes imperativt med
   `kubectl create secret`, TLS via annotation `cert-manager.io/cluster-issuer`
   (staging → verificér → prod).
 
-## Åbne beslutninger
+## Beslutninger (taget 2026-09-09)
 
-Tag disse først — de styrer resten af planen.
+1. **Produkt:** kun Loft. Chat-rum, DM, filoverførsel, konti og IPFS fjernes
+   fra den aktive sti i M1–M5 (git-historik bevares). Navn, domæne og image
+   hedder `loft`.
+2. **Gæsteadgang (Plan B):** ingen konti/JWT/email i MVP. Huddle-URL'en
+   (tilfældig UUID) er adgangsnøgle; deltageren vælger selv vist navn. Fase 2
+   kan tilføje konti/ejerskab uden at ændre signalprotokollen.
+3. **Frontend:** statisk nginx-image pr. miljø, `config.js` mountet som
+   ConfigMap. IPFS/DNSLink og ADR-0008 udgår; ADR-draft 0027 erstatter dem.
+4. **Domæner:** nyt skema, ét origin pr. miljø — `loft.test.gihc.online`
+   (test) og senere `loft.gihc.online` (prod). Frontend, REST (`/v1`) og
+   WebSocket deler host, så CORS/CSP-par-koblingen forsvinder. `ALLOWED_ORIGIN`
+   bevares kun til lokal udvikling.
+5. **coturn:** beholdes — WebRTC uden TURN fejler bag NAT. Kører som
+   `hostNetwork`-Deployment; firewall udvides i `infra/tofu/main.tf`:
+   TCP+UDP 3478 og UDP 49152–49200.
+6. **Postgres:** én lille instans pr. miljø-namespace — kun `huddles`-tabellen
+   (id, navn, created_at, last_active). Deltagere, presence og signalering er
+   in-memory → præcis 1 replica.
+7. **Secrets:** `postgres-password` + `database-url` i `pass` → secret
+   `loft-secrets`. `TURN_SECRET` er reelt offentlig (HMAC-baserede credentials
+   med 24 t TTL) og ligger derfor i ConfigMap for test.
+8. **CI:** GitHub Actions → `ghcr.io/gihc-org/loft` (+ `loft-web`), SHA-tags +
+   latest, buildx med GHA-cache (Rust-build er langsom). `.woodpecker.yaml`
+   udgår ved oprydning.
 
-### 1. Frontend: IPFS eller statisk image?
+## Navngivning
 
-Den største beslutning. I dag serveres frontend af kubo-gatewayen med
-Host-header-baseret DNSLink-resolution, og deploy-flowet kører `ipfs add -r`
-og opdaterer `_dnslink.*` TXT-records hos Simply.com.
-
-- **(a) Behold IPFS:** kubo som pod + PVC, gateway bag ingress (ingress-nginx
-  videresender Host-headeren som standard, så den del er enkel). Kræver at
-  `ipfs add` + DNSLink-TXT-opdatering automatiseres i CI pr. miljø. Bevarer
-  ADR-0008 og projektets IPFS-identitet, men er markant mere komplekst.
-- **(b) Statisk image:** frontend pakkes i et lille nginx-image pr. miljø med
-  `config.js` bagt ind (eller mountet som ConfigMap). Simpelt, matcher
-  hyfer/capture-mønsteret, men opgiver IPFS/DNSLink — kræver at ADR-0008
-  erstattes af en ny ADR.
-
-Anbefaling: (b), medmindre IPFS-hostingen er et formål i sig selv.
-
-### 2. coturn / WebRTC: beholdes, og hvor?
-
-coturn kan ikke ligge bag ingress-nginx (rene TCP/UDP-porte: 3478 +
-49152–49200/udp). Muligheder:
-
-- **(a) `hostNetwork: true`-pod i k3s** + firewall-regler i `infra/tofu/main.tf`
-  (TCP+UDP 3478, UDP 49152–49200). Det eneste reelt blokerende infra-arbejde.
-- **(b) Droppes foreløbigt**, hvis WebRTC/video ikke bruges i praksis — så er
-  der ingen infra-blokering overhovedet.
-
-Bemærk: `TURN_SECRET` indsættes i dag i frontend-`config.js` og er reelt
-offentlig (HMAC-baserede credentials genereres klient-side) — ingen
-hemmelighedsproblem at løse her.
-
-### 3. Domæneskema
-
-- **(a) Genbrug gamle domæner** (`api.gihc.online` + `chat.apps.gihc.online`,
-  `beta.*`, `test.*`): peger allerede på serverens IP → nul DNS-arbejde, ingen
-  URL-ændring.
-- **(b) Nyt skema** som capture/hyfer (`chat.test.gihc.online` osv.):
-  konsistent på tværs af apps, men kræver nye DNS-records + oprydning af gamle.
-
-Uanset valg: frontend og API er et **par** — CSP `connect-src` og
-`ALLOWED_ORIGIN` skal pege på hinanden pr. miljø.
-
-### 4. JWT_SECRET: delt eller per miljø?
-
-I dag delt på tværs af test/beta/prod. Da der alligevel startes forfra (ingen
-data, ingen gyldige tokens at bevare), anbefales **én secret per miljø**.
-
-### 5. postgres-layout
-
-I dag én instans med tre databaser (`chatdb`, `chatdb_test`, `chatdb_beta`).
-
-- **(a) Én postgres per miljø-namespace** (pod + PVC i hvert namespace):
-  selvstændige miljøer, idiomatic k8s, lettere at begrunde om i manifesterne.
-  Tre postgres-pods koster lidt ekstra RAM (serveren har 4 GB).
-- **(b) Én delt postgres** med tre databaser (som i dag): skal ligge i et
-  delt namespace, og de to ekstra databaser skal oprettes (ConfigMap med
-  init-SQL i `/docker-entrypoint-initdb.d/`, eller imperativt én gang).
-
-Anbefaling: (a) — simplere manifester, ingen cross-miljø-kobling.
-
-### 6. CI: GitHub Actions eller Woodpecker?
-
-Repoet har `.woodpecker.yaml`, men Woodpecker kører ikke endnu (det er et
-ønske, se `../infra/TODO.md`). hyfer og capture bruger GitHub Actions → GHCR.
-Anbefaling: GitHub Actions-workflow nu (kopier captures `.github/workflows/
-build.yml`-mønster); Woodpecker-deploy kan altid lægges ovenpå senere.
-
-## Forudsætninger i infra (før deploy)
-
-1. **Firewall** — kun hvis coturn beholdes: TCP+UDP 3478 og UDP 49152–49200
-   tilføjes `hcloud_firewall.platform` i `infra/tofu/main.tf` + `tofu apply`.
-2. **Security headers** — i dag sat af Caddy. Aftalt linje (jf.
-   `../infra/MIGRATION.md`): globale basis-headers (`nosniff`, frame-deny,
-   referrer-policy) via ingress-nginx' ConfigMap i `infra/tofu/platform.tf`;
-   CSP sættes per app/miljø som ingress-annotationer, fordi den peger på
-   API-domænet.
-3. **Secrets fra `pass`** — oprettes imperativt pr. namespace, intet i git:
-   ```
-   kubectl create secret generic chat-secrets -n <namespace> \
-     --from-literal=postgres-password=$(pass ...) \
-     --from-literal=jwt-secret=$(pass ...) \
-     --from-literal=turnstile-secret=$(pass ...) \
-     --from-literal=resend-api-key=$(pass ...)
-   ```
-   Husk feature-flag-konventionen (ADR-0012): tom `TURNSTILE_SECRET` slår
-   CAPTCHA fra, tom `RESEND_API_KEY` auto-verificerer — test/beta kører med
-   tomme værdier.
+| Rolle | Værdi |
+|-------|-------|
+| Produkt | Loft |
+| Test-domæne | `loft.test.gihc.online` |
+| Prod-domæne | `loft.gihc.online` |
+| API-image | `ghcr.io/gihc-org/loft` |
+| Web-image | `ghcr.io/gihc-org/loft-web` |
+| Namespace (test) | `loft-test` |
+| Manifester | `k8s/test/` (prod: `k8s/prod/` senere) |
+| DNS-script | `scripts/create-dns-record.sh` |
 
 ## Trin-for-trin
 
-1. Tag beslutningerne 1–6 ovenfor.
-2. **GitHub Actions-workflow**: byg `chat`-imaget → `ghcr.io/gihc-org/chat`
-   (public package, ellers kræves `imagePullSecrets`). Brug buildx med GHA
-   cache — Rust-build er langsomt. Tag med git SHA, ikke kun `:latest`
-   (rollback-mulighed). Evt. også frontend-image hvis beslutning 1 = (b).
-3. **`k8s/`-manifester**, ét sæt per miljø (start med test):
-   - `namespace.yaml` — fx `chat-test`.
-   - `postgres.yaml` — Deployment (1 replica, `Recreate`) + PVC + ClusterIP-
-     service + secret-reference. Kun hvis beslutning 5 = (a); ellers ét delt
-     sæt + init-SQL.
-   - `deployment.yaml` — chat, 1 replica (`Recreate`: PVC + in-memory WS/
-     presence-state gør flere replicas meningsløse). env fra secret + ConfigMap
-     (`DATABASE_URL`, `ALLOWED_ORIGIN`, `BASE_URL`, `FRONTEND_URL` m.fl.).
-     Tilføj probes (TCP på 8080 er nok; app'en har ingen `/healthz` endnu) og
-     resource requests/limits — se også CIS-punkterne i `TODO.md` (non-root,
-     read-only fs), som kan tages med her.
-   - `service.yaml` — ClusterIP 80 → 8080.
-   - `ingress.yaml` — API + frontend (to hosts eller to filer), med
-     annotationerne fra "Tekniske noter" nedenfor. Start med
-     `letsencrypt-staging`, verificér, skift til `letsencrypt-prod`.
-4. **DNS** — kun hvis nyt skema: opret A-records via Simply.com API'et
-   (capture har et genbrugeligt idempotent script,
-   `../capture/scripts/create-dns-record.sh`).
-5. **Verificér test** — curl + login-flow + WebSocket + upload. Omskriv
-   `scripts/smoke-test.sh` fra `docker compose exec postgres psql` til
-   `kubectl exec`.
-6. **Beta og prod** — gentag per miljø.
-7. **Oprydning** (når prod kører stabilt): slet `docker-compose*.yml`,
-   `ansible/`, `caddy/`, opdatér `runbooks/` og `AGENTS.md` til k8s-flowet,
-   slet døde DNS-records hos Simply.com hvis skemaet skiftede.
+0. **Dokumentation (denne gren):** TODO.md + MIGRATION.md omskrevet,
+   ADR-drafts 0027/0028, `k8s/test`-skelet, GitHub Actions-workflow,
+   DNS-script og frontend-Dockerfile. Intet deployet endnu.
+1. **Backend (Loft-kerne):** migration `huddles`; `POST /v1/huddles`
+   (rate-limited) og `GET /v1/huddles/:id`; WS `/v1/huddles/:id` med
+   `join`/`leave`/`roster`/`presence`/`signal`; `/healthz`; TTL-oprydning.
+   Fjern auth-, room-, DM- og file-stier fra routeren i takt med at WS'eren er
+   omskrevet. Dockerfile: non-root + read-only fs (CIS-punkter i TODO).
+2. **Frontend (Loft-UI):** ny `huddle.html` (opret/deltag via link, navn,
+   mic/cam, skærmdeling, forlad) og `rtc.js` med mesh + perfect negotiation
+   (refaktor af chat.html's ene 1:1-`RTCPeerConnection`). Genbrug ICE/TURN-
+   logik og auto-reconnect. Invite: copy-link, `navigator.share`, QR.
+3. **Tests + CI:** Playwright med tre kontekster (connected, skærmdeling,
+   leave/rejoin, link fra frisk kontekst); cargo-tests for huddle-registry og
+   WS-signalering; workflow bygger begge images; GHCR-pakker gøres public.
+4. **Deploy test:** DNS A-record (scriptet), secret `loft-secrets`, apply
+   `k8s/test`, firewall-regler i infra/tofu, `letsencrypt-staging` → verificér
+   → prod-issuer, smoke-test omskrevet til `kubectl exec` + gæste-huddle-flow.
+5. **Beta/prod:** kopiér manifester til `k8s/prod/` (realm/domæner skiftes),
+   deploy, skift DNS til `loft.gihc.online`.
+6. **Oprydning:** slet `docker-compose*.yml`, `ansible/`, `caddy/`,
+   `.woodpecker.yaml`, kubo/DNSLink-rester og døde DNS-records
+   (`api.gihc.online`, `chat.apps.gihc.online`, `beta.*`, `test.*`). Opdater
+   `runbooks/`, `AGENTS.md` og ADR-index i `~/projects/adrs/`; skriv referat.
 
 ## Tekniske noter / gotchas
 
-- **Ingress-annotations for chat-API:**
-  - `nginx.ingress.kubernetes.io/proxy-body-size: "50m"` (uploads op til
-    50 MB — default er 1m).
-  - `nginx.ingress.kubernetes.io/proxy-read-timeout` /
-    `proxy-send-timeout` sat højt (fx 3600) — WebSocket på `/v1/ws/:room_id`
-    er langlevet.
-  - Rate limiting keyed på `X-Forwarded-For` virker uændret — ingress-nginx
-    sætter headeren korrekt som standard.
-- **Databasemigrationer** kører embedded ved app-start
-  (`sqlx::migrate!`) — ingen separat Job nødvendig.
-- **Rolling updates dropper WS-forbindelser** — acceptabelt, frontend har
-  auto-reconnect med backoff. `Recreate`-strategien giver kort nedetid ved
-  deploy, som i dag.
-- **Backend nester selv routeren på `/v1`** — ingress routes hele hosten, ingen
-  path-rewrites.
-- **kubo (hvis IPFS beholdes):** PVC til `/data/ipfs`, gateway 8080 bag
-  ingress med Host-header passthrough (standard). Swarm-porte er ikke
-  eksponeret i dag og skal heller ikke være det.
+- **WebSocket-timeouts:** ingress-nginx `proxy-read-timeout` /
+  `proxy-send-timeout` = 3600 på `/v1/ws/...` — forbindelsen er langlivet.
+  `proxy-body-size` udgår når filoverførsel fjernes.
+- **Security headers:** globale basis-headers (nosniff, frame-deny,
+  referrer-policy) sættes i `infra/tofu/platform.tf`. CSP og
+  `Permissions-Policy` (kamera/mikrofon = self) sættes i app-laget — nginx-conf
+  for web, Axum-layer for API — fordi ingress' `configuration-snippet` er slået
+  fra som standard.
+- **1 replica:** in-memory huddles/presence gør flere replicas meningsløse.
+  `Recreate`-strategi bruges ved deploy (postgres-PVC + korte nedtider).
+  Rolling updates dropper WS-forbindelser — frontend auto-reconnect dækker det.
+- **Databasemigrationer** kører embedded ved app-start (`sqlx::migrate!`) —
+  ingen separat Job nødvendig.
+- **Ingress-routing:** backend nester selv på `/v1`; frontend på `/`. Ingen
+  path-rewrites. Link-preview/OG er en åben M2-beslutning: backend-rendret
+  `/h/:id`-landing (anbefalet) eller generiske og-tags i web-nginx.
 - **GHCR-pakker er private som standard** — gør dem public manuelt første
-  gang (som for hyfer/capture), ellers skal der `imagePullSecrets` til.
+  gang, ellers skal der `imagePullSecrets` til.
+- **Rollback:** deploy med SHA-tag; `kubectl set image deployment/loft-api
+  loft-api=ghcr.io/gihc-org/loft:<forrige-sha>`.
 - **DNS-resolveren på serveren er allerede rettet** (infra, Ansible) — nye
-  records slår igennem hurtigt for cert-manager's self-check.
+  records slår hurtigt igennem for cert-manager's self-check.
 
 ## Efter migrationen
 
-- Genovervej `.woodpecker.yaml` — enten omlæg til det nye flow eller slet,
-  når GitHub Actions bærer bygget.
-- Skriv ADR der afløser ADR-0019 (platform-Caddy) — og hvis IPFS droppes,
-  en der afløser ADR-0008.
-- Referat i `referater/` efter hver væsentlig session, som sædvanligt.
+- Flyt accepterede ADR-drafts til `~/projects/adrs/` (nr. 0027 og 0028).
+- Omdøb `chat/`-kataloget til `loft/` når backend-fokuseringen er gennemført,
+  og genovervej repoets navn.
+- Skriv referat i `referater/` efter hver væsentlig session, som sædvanligt.

@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loft-postgres
+  namespace: loft-test
+spec:
+  replicas: 1
+  # PVC er ReadWriteOnce — Recreate dræber den gamle pod først.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: loft-postgres
+  template:
+    metadata:
+      labels:
+        app: loft-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: loftdb
+            - name: POSTGRES_USER
+              value: loft
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: loft-secrets
+                  key: postgres-password
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "loft", "-d", "loftdb"]
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: loft-postgres-data

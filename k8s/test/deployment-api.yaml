@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loft-api
+  namespace: loft-test
+spec:
+  replicas: 1
+  # Huddles/presence er in-memory — flere replicas er meningsløse.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: loft-api
+  template:
+    metadata:
+      labels:
+        app: loft-api
+    spec:
+      containers:
+        - name: loft-api
+          image: ghcr.io/gihc-org/loft:latest
+          imagePullPolicy: Always # deploy med SHA-tag for rollback-mulighed
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: loft-secrets
+                  key: database-url
+            - name: ALLOWED_ORIGIN
+              valueFrom:
+                configMapKeyRef:
+                  name: loft-config
+                  key: allowed-origin
+            - name: BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: loft-config
+                  key: base-url
+            - name: FRONTEND_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: loft-config
+                  key: frontend-url
+            # TODO M1: fjern UPLOAD_DIR når fil-upload er taget ud af koden.
+            - name: UPLOAD_DIR
+              value: /data/uploads
+          volumeMounts:
+            # TODO M1: kan fjernes sammen med UPLOAD_DIR (read-only rootfs).
+            - name: uploads
+              mountPath: /data/uploads
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: uploads
+          emptyDir: {}

@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: loft-config
+  namespace: loft-test
+data:
+  # Frontend-konfiguration pr. miljø — mountes på /usr/share/nginx/html/config.js.
+  # TURN_SECRET er reelt offentlig (HMAC-baserede credentials, 24 t TTL) og
+  # deles med coturn via nøglen turn-secret nedenfor — hold de to i sync.
+  config.js: |
+    const API_URL = 'https://loft.test.gihc.online';
+    const WS_URL  = 'wss://loft.test.gihc.online';
+    const TURN_URL = 'turn:loft.test.gihc.online:3478?transport=udp';
+    const TURN_SECRET = 'loft-test-turn-secret-change-me';
+  turn-secret: "loft-test-turn-secret-change-me"
+  realm: "loft.test.gihc.online"
+  external-ip: "65.109.233.92"
+  allowed-origin: "https://loft.test.gihc.online"
+  base-url: "https://loft.test.gihc.online"
+  frontend-url: "https://loft.test.gihc.online"

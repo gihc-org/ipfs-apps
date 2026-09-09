@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loft-web
+  namespace: loft-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: loft-web
+  template:
+    metadata:
+      labels:
+        app: loft-web
+    spec:
+      containers:
+        - name: loft-web
+          image: ghcr.io/gihc-org/loft-web:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+              name: http
+          volumeMounts:
+            # config.js overskrives pr. miljø — ingen rebuild ved deploy.
+            - name: config
+              mountPath: /usr/share/nginx/html/config.js
+              subPath: config.js
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+      volumes:
+        - name: config
+          configMap:
+            name: loft-config

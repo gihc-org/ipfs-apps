@@ -1,0 +1,35 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: loft
+  namespace: loft-test
+  annotations:
+    # Start staging → verificér cert → skift til letsencrypt-prod.
+    cert-manager.io/cluster-issuer: letsencrypt-staging
+    # WebSocket på /v1/ws/:huddle_id er langlivet.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - loft.test.gihc.online
+      secretName: loft-test-gihc-online-tls
+  rules:
+    - host: loft.test.gihc.online
+      http:
+        paths:
+          - path: /v1
+            pathType: Prefix
+            backend:
+              service:
+                name: loft-api
+                port:
+                  number: 80
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: loft-web
+                port:
+                  number: 80

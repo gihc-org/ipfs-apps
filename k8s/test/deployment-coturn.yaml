@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loft-coturn
+  namespace: loft-test
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: loft-coturn
+  template:
+    metadata:
+      labels:
+        app: loft-coturn
+    spec:
+      # TURN kan ikke ligge bag ingress-nginx (rene TCP/UDP-porte).
+      # Firewall-regler: TCP+UDP 3478, UDP 49152–49200 i infra/tofu/main.tf.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: coturn
+          image: coturn/coturn:4.6
+          args:
+            - "-n"
+            - "--log-file=stdout"
+            - "--use-auth-secret"
+            - "--static-auth-secret=$(TURN_SECRET)"
+            - "--fingerprint"
+            - "--no-multicast-peers"
+            - "--no-cli"
+            - "--realm=$(REALM)"
+            - "--external-ip=$(EXTERNAL_IP)"
+            - "--min-port=49152"
+            - "--max-port=49200"
+          env:
+            - name: TURN_SECRET
+              valueFrom:
+                configMapKeyRef:
+                  name: loft-config
+                  key: turn-secret
+            - name: REALM
+              valueFrom:
+                configMapKeyRef:
+                  name: loft-config
+                  key: realm
+            - name: EXTERNAL_IP
+              valueFrom:
+                configMapKeyRef:
+                  name: loft-config
+                  key: external-ip
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi

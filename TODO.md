@@ -1,208 +1,93 @@
-# TODO
+# TODO — Loft (tidligere ipfs-apps/chat)
 
-## Playwright e2e tests
+Projektet fokuseres til **Loft**: WebRTC link-rum (lyd, video, skærmdeling)
+med gæsteadgang, delt via link over Matrix/XMPP/mail. Samtidig migreres fra
+Caddy + Docker Compose til k3s. Se [MIGRATION.md](MIGRATION.md) og ADR-drafts i
+`adr-drafts/`.
 
-- [x] Opsæt Playwright i `e2e/` med fake mikrofon/kamera (Chromium-flags)
-- [x] Auth-test: registrering og login-flow
-- [x] Call-test: ring op → accepter → læg på (to browser-contexts)
-- [ ] Screen share-test: del skærm → modtager ser video → stop
-- [ ] Integrer i CI-pipeline (kræver Chromium i CI-image)
+Afsluttet før refokuseringen (chat-rum, DM, filoverførsel, 1:1-skærmdeling og
+lydopkald) ligger i git-historikken; Playwright- og WebRTC-mønstre derfra
+genbruges.
 
-### Integration i deploy-flow
+## M0 — Fundament (dokumentation)
 
-- [x] Opret test-miljø på VPS (`test.chat.apps.gihc.online` / `test.api.gihc.online`) — `chat-test` service, Caddy-blokke, DNS, IPFS/DNSLink via Ansible
-- [x] Opret `.woodpecker.yaml` — pipeline: `deploy-test` → e2e mod test-miljøet → `deploy-promote` (beta + prod)
-- [x] Playwright-image `mcr.microsoft.com/playwright:v1.44.0-jammy` bruges som e2e CI-image
-- [x] E2e-trinnet gater deploy til beta/prod via `depends_on`
-- [ ] Konfigurér secrets i Woodpecker UI: `vault_password` og `ssh_private_key`
+- [x] Beslutning: Loft link-rum (Plan B), gæsteadgang, statisk frontend
+- [x] TODO.md og MIGRATION.md omskrevet til Loft + k3s
+- [x] ADR-drafts 0027 (link-rum + k3s) og 0028 (mesh-topologi)
+- [x] `k8s/test/`-skelet, GitHub Actions-workflow, DNS-script,
+      frontend-Dockerfile
+- [ ] Flyt ADR-drafts til `~/projects/adrs/` når de er accepteret
 
----
+## M1 — Backend: Loft-kerne
 
-## CI/CD — Woodpecker CI på Raspberry Pi
+- [ ] Migration: `huddles`-tabel (id, navn, created_at, last_active)
+- [ ] `POST /v1/huddles` — opret link-rum, returnér `{ id, url }`
+- [ ] `GET /v1/huddles/:id` — findes rummet? (til link-åbning)
+- [ ] WS `/v1/huddles/:id` — gæste-join med navn; `join`/`leave`/`roster`/
+      `presence`/`signal`; serveren sætter `from` på signaler
+- [ ] `/healthz`-endpoint + k8s-probes
+- [ ] TTL-oprydning af inaktive huddles (baggrundsjob eller lazy)
+- [ ] Rate limiting på huddle-oprettelse (tower_governor, XFF-baseret)
+- [ ] Fjern auth-, room-, DM-, file- og uploads-stier fra routeren i takt med
+      at WS'eren er omskrevet
+- [ ] Dockerfile: non-root-bruger (uid 10001), `no-new-privileges`,
+      read-only rootfs (uploads-sti udgår)
 
-- [ ] Installer Woodpecker server + agent på Raspberry Pi via Docker Compose
-- [ ] Forbind til GitHub som forge (OAuth app)
-- [ ] Tilføj `VAULT_PASSWORD` som krypteret pipeline-secret i Woodpecker UI
-- [ ] Opret `.woodpecker.yaml` i repo med Ansible deploy-step
-- [ ] Konfigurer cron-job i Woodpecker UI (fx hvert 10. minut) som pull-mekanisme
-- [ ] Valgfrit: tilføj webhook fra GitHub til Pi for øjeblikkelig deploy ved push
-- [ ] Kør `e2e/` Playwright-tests i pipeline før deploy (kræver Chromium i CI-image)
-- [ ] Opsæt staging-/testmiljø (separat VPS eller Docker Compose lokalt på Pi) som forudsætning for fuld OWASP ZAP-scan og Playwright e2e i CI — uden testmiljø kan aggressiv scanning og browser-tests ikke køre mod prod
+## M2 — Frontend: Loft-UI
 
-### Allerede automatiseret
+- [ ] `huddle.html` — opret/deltag via link, vælg navn, mic/cam-toggle,
+      skærmdeling, forlad rum
+- [ ] `rtc.js` — mesh-modul med ét `RTCPeerConnection` pr. deltager og
+      perfect negotiation (refaktor af chat.html's 1:1-logik)
+- [ ] Genbrug ICE/TURN-logik (`addTurnServer`) og auto-reconnect med backoff
+- [ ] Invite: copy-link, `navigator.share`, QR-kode
+- [ ] Link-preview: beslut backend-rendret `/h/:id` vs. generiske og-tags
+- [ ] Deltager-UI opdateres i realtid via roster/presence-beskeder
+- [ ] Nye sider afløser index/rooms/chat.html (slet når e2e er grøn)
 
-- [x] Post-deploy smoke test (`scripts/smoke-test.sh`) — kører automatisk sidst i Ansible-playbook'en og tester login, GET /auth/me, GET /rooms og DELETE /auth/me mod prod
+## M3 — Tests + CI
 
----
+- [ ] Playwright: tre kontekster i samme rum — connected, skærmdeling,
+      leave/rejoin, link åbnet fra frisk kontekst
+- [ ] Cargo-tests: huddle-registry og WS-signalering
+- [ ] `.github/workflows/build.yml` bygger `loft` + `loft-web` (SHA-tags)
+- [ ] GHCR-pakker gøres public
+- [ ] E2e kører mod `loft.test.gihc.online` før prod-promote
 
-## Sikkerhed — OWASP-scanning
+## M4 — k3s deploy (test-miljø)
 
-Se `OWASP-IMPROVEMENTS.md` for kendte fund og anbefalinger til kodeændringer.
-Nedenfor er værktøjer til løbende validering.
+- [ ] A-record for `loft.test.gihc.online` via `scripts/create-dns-record.sh`
+- [ ] Secret `loft-secrets` i `loft-test` (postgres-password, database-url)
+- [ ] Apply `k8s/test/` (postgres, api, web, ingress, coturn)
+- [ ] Firewall i `infra/tofu/main.tf`: TCP+UDP 3478, UDP 49152–49200
+- [ ] `letsencrypt-staging` → verificér cert → `letsencrypt-prod`
+- [ ] Smoke-test omskrevet til `kubectl exec` + gæste-huddle-flow
+- [ ] Manifester for beta/prod i `k8s/prod/`
 
-### 1. HTTP security headers — verificer efter næste deploy
+## M5 — Oprydning
 
-Kør mod live URL efter deploy for at bekræfte at Caddyfile-headerne virker:
+- [ ] Slet `docker-compose*.yml`, `ansible/`, `caddy/`, `.woodpecker.yaml`
+      og IPFS/DNSLink-rester
+- [ ] Slet døde DNS-records (`api.gihc.online`, `chat.apps.gihc.online`,
+      `beta.*`, `test.*`)
+- [ ] Opdater `runbooks/`, `AGENTS.md` og ADR-index
+- [ ] Omdøb `chat/` til `loft/` og genovervej repoets navn
+- [ ] Referat i `referater/`
 
-- https://securityheaders.com/?q=https://api.gihc.online
-- https://observatory.mozilla.org/analyze/api.gihc.online
+## Sikkerhed (videreført fra chat)
 
-Forventet resultat: mindst A baseret på de headers vi tilføjede i commit c09b52d.
+- [ ] Rate limiting på huddle-oprettelse og WS-håndtryk
+- [ ] Capability-link er tilfældig UUID; verificér at ingress-logs ikke
+      logger query/fragment med hvis tokens indføres
+- [ ] Link-expiry/revocation (TTL på huddles)
+- [ ] CSP: `default-src 'self'`, kamera/mikrofon via `Permissions-Policy`,
+      ingen tredjeparts-scripts (Turnstile udgår)
+- [ ] Containerhærdning: non-root, read-only fs, `no-new-privileges`
+- [ ] `trivy image` mod byggede images + `cargo audit` i CI
+- [ ] OWASP ZAP passiv baseline mod `loft.test.gihc.online`
 
-### 2. OWASP ZAP — dynamisk scanning mod kørende app
+## GDPR (forenklet)
 
-- [x] Passiv baseline-scan integreret i `ansible/playbook.yml` — kører automatisk efter smoke test ved hvert deploy (`ghcr.io/zaproxy/zaproxy:stable`, fejler ved FAIL-level alerts)
-- [ ] Fuld scan (aggressiv) — kræver testmiljø, se punkt nedenfor
-
-Fuld scan køres manuelt mod testmiljø når det er opsat:
-
-```bash
-docker run --rm ghcr.io/zaproxy/zaproxy:stable \
-  zap-full-scan.py -t https://<testmiljø-url>
-```
-
-### 3. cargo audit — dependency-scanning
-
-```bash
-cd chat && cargo audit
-```
-
-Tilføj som task i `ansible/playbook.yml` inden `docker compose build` — se
-anbefaling i `OWASP-IMPROVEMENTS.md`.
-
----
-
-## Sikkerhed — tilbageværende kodeændringer
-
-Se `OWASP-IMPROVEMENTS.md` for detaljer og kodeeksempler.
-
-- [ ] Rate limiting på `/auth/token`, `/auth/register`, og `/dms` POST (`tower_governor`)
-- [x] Glemt adgangskode — reset via email-link (token udløber efter 1 time)
-- [ ] JWT-token revokering ved logout
-- [ ] Verifikationstoken udløber efter 48 timer
-- [ ] Account lockout efter gentagne fejlede loginforsøg
-- [ ] Sikkerhedslogning med `tracing::warn!` på auth-hændelser (✅ delvist implementeret for DM-adgang)
-- [ ] JWT i `httpOnly`-cookie frem for `localStorage`
-- [ ] `email`-felt NOT NULL i database
-
----
-
-## GDPR-compliance
-
-Projektet gemmer persondata (email, brugernavn) på EU-borgere. Se ADR-0014.
-
-- [x] `DELETE /auth/me` — ret til sletning (sletter bruger + DM-rum; beskeder og medlemskaber via CASCADE)
-- [x] `GET /auth/me` — returnerer alle gemte felter: id, username, email, email_verified, created_at
-- [x] Tilføj privacy policy-side til frontend (`frontend/privacy.html`) med oplysning om hvad der gemmes og hvorfor; link tilføjet til registreringsformularen
-- [x] Dokumentér dataopbevaring — politik: konti og beskeder gemmes uden tidsbegrænsning indtil brugeren sletter sin konto (DELETE /auth/me); ved sletning fjernes beskeder og rum-medlemskaber via ON DELETE CASCADE; ingen automatisk sletning af inaktive konti
-- [x] Bekræft at PostgreSQL-data ikke replikeres til tredjelande — VPS kører hos Hetzner i Helsinki, Finland (EU)
-- [x] Verifikationstoken er persondata — slettes ved verify (`verification_token = NULL`) og ved sletning af konto (hele brugerrækken slettes via CASCADE); eksponeres aldrig i API-svar (`#[serde(skip)]`)
-
----
-
-## Filoverførsel i DM-rum
-
-P2P når modtageren er online, backend-fallback når de er offline.
-
-### Backend (fallback)
-- [x] Migration: `files`-tabel (`id`, `uploader_id`, `filename`, `mime_type`, `size`, `created_at`); filer gemmes på disk i `/data/uploads/`
-- [x] `POST /v1/files` — multipart upload, maks 50 MB; returnerer `{ id, url }`
-- [x] `GET /v1/files/:id` — downloader filen (kræver auth + DM-adgang)
-- [x] Slet fil når tilknyttet bruger sletter sin konto (`DELETE /auth/me`) — via `ON DELETE CASCADE` på `uploader_id`
-- [x] Docker: mount `/data/uploads` som volume i `docker-compose.yml`
-
-### Frontend — chat.html
-- [x] "Vedhæft fil"-knap (kun i DM-rum) der åbner `<input type="file">`
-- [x] Hvis peer er online: send via `RTCDataChannel` på eksisterende `RTCPeerConnection` (chunks à 16 KB)
-- [x] Hvis peer er offline: upload til `POST /v1/files`, send besked med fil-URL
-- [x] Modtager-side: vis filnavn + downloadknap i chatboblen (for backend-filer); for P2P-filer: saml chunks og tilbyd download via `URL.createObjectURL`
-- [x] Progressindikator under overførsel
-- [x] 10s fallback til backend hvis DataChannel ikke åbner (peer ikke på DM-siden)
-- [x] Direkte signal-routing: signaler rutes til brugerens personlige kanal så de virker på tværs af rum
-- [x] E2e tests: backend-fallback, P2P (begge i rum), fallback-timeout
-
----
-
-## WebSocket auto-reconnect med exponential backoff
-
-- [x] Exponential backoff ved reconnect: 1s → 2s → 4s → ... → 30s max; reset ved vellykket forbindelse
-- [x] Fjern `hangUp()` og `stopScreenShare()` fra `ws.onclose` — WebRTC håndterer sit eget lifecycle via `onconnectionstatechange`
-- [x] Stop reconnect ved sidenavigation (`beforeunload`)
-- [x] Vis ventetid i statuslinjen ("forsøger igen om Xs…")
-
----
-
-## Online-indikator under direkte beskeder
-
-Vis en grøn prik ud for DM-kontakter der aktuelt er forbundet til serveren.
-
-- [x] **Backend**: tilføj global `online_users: Arc<RwLock<HashMap<Uuid, u32>>>` i `AppState` — opdateres når en WS-forbindelse åbnes/lukkes (ref-counted for multiple tabs)
-- [x] **Backend**: ny WS-beskedtype `presence` — broadcastes i rummet når en brugers online-status skifter
-- [x] **Backend**: `GET /v1/presence` — returnerer liste af online bruger-UUIDs (kræver auth)
-- [x] **Frontend** (`rooms.html`): hent `/v1/presence` ved sideload og vis grøn prik ud for online DM-kontakter; opdateres hvert 30. sekund
-- [ ] **Frontend**: opdater prikken i realtid via `presence`-besked i WS (kræver WS-forbindelse på rooms.html)
-
----
-
-## WebRTC skærmdeling (ADR-0016)
-
-### Fase 1 — 1:1 skærmdeling i DM-rum
-
-- [x] **Backend** (`src/routes/chat.rs`): viderebringe `signal`-beskeder i WS-broadcast med `from` sat til autentificeret brugers UUID; ikke gemme i database
-- [x] **Frontend** (`frontend/chat.html`): "Del skærm"-knap i DM-rum, `getDisplayMedia()`, `RTCPeerConnection` med STUN, stop-knap
-- [x] **Frontend**: modtager-side viser indgående stream i `<video>`-element; håndter offer/answer/ICE-candidate flow
-- [x] **Integration test**: signal-beskeder videresendes korrekt og gemmes ikke
-- [x] **TURN-server** (`coturn`) i `docker-compose.prod.yml` — løser NAT-traversal på tværs af netværk; HMAC-SHA1 tidsbegrænsede credentials via `--use-auth-secret`
-- [x] **Rejoin** — sharer sender automatisk nyt offer når peer vender tilbage til DM-rum
-- [ ] **Frontend**: disable "Del skærm"-knappen når peeren ikke er online (track tilstedeværelse via WS `join`/`leave`-beskeder eller heartbeat)
-
-### Beslutninger der mangler afklaring
-
-- [ ] **Modtager-notifikation**: skal der vises en synlig notifikation ("X deler sin skærm") når skærmdeling starter, så modtageren ikke overser videoen?
-- [ ] **TURN-fejlhåndtering**: skal brugeren have en besked hvis TURN-serveren er nede og forbindelsen fejler, frem for stille at falde tilbage til STUN (som kan fejle bag NAT)?
-- [ ] **TURN-credential TTL**: credentials udløber efter 24 timer — skal siden automatisk forny dem (re-kalde `addTurnServer()` og genstarte `RTCPeerConnection`), eller er en reload-besked til brugeren nok?
-
-### Fase 2 — Gruppe-huddles (fremtidig)
-
-- [ ] Ny ADR for gruppe-topologi (mesh vs. SFU)
-
----
-
-## WebRTC opkald i DM-rum (fremtidig)
-
-1:1 lyd- og videoopkald via WebRTC i DM-rum. Genbruger eksisterende signal-infrastruktur og TURN-server.
-
-- [ ] ADR for opkald (beslut: ringesignal-flow, afvis/accepter UI, delt RTCPeerConnection med skærmdeling)
-- [ ] **Ringesignal**: ny signal-type `call-invite`/`call-accept`/`call-reject` — modtageren ser en indgående opkaldsboks med accepter/afvis
-- [ ] **Backend**: ingen ændringer forventet — signal-forwarding håndterer de nye typer uændret
-- [ ] **Frontend**: "Ring op"-knap i DM-rum (kun synlig når peer er online), `getUserMedia({ audio: true })`, delt `RTCPeerConnection` med skærmdeling via renegotiering
-- [ ] **Frontend**: indgående opkald vises som overlay med ringetone (Web Audio API eller `<audio>`) og accepter/afvis-knapper
-- [ ] **Frontend**: aktiv opkald-UI — dæmp mikrofon, læg på; kan kombineres med aktiv skærmdeling
-- [ ] **Fase 2**: kamera-video — `getUserMedia({ audio: true, video: true })`, `<video>`-element til modtager
-
----
-
-## CIS Docker Benchmark
-
-Hærdning af Docker-opsætning. Se ADR-0014.
-
-- [ ] Kør backend-container som non-root bruger — tilføj til `chat/Dockerfile`:
-  ```dockerfile
-  RUN useradd -m appuser
-  USER appuser
-  ```
-- [ ] Tilføj resource limits i `docker-compose.yml`:
-  ```yaml
-  deploy:
-    resources:
-      limits:
-        memory: 256m
-        cpus: "0.5"
-  ```
-- [ ] Sæt `read_only: true` på containere der ikke skriver til filsystem (chat)
-- [ ] Sæt `no-new-privileges: true` på alle services:
-  ```yaml
-  security_opt:
-    - no-new-privileges:true
-  ```
-- [ ] Kør `docker scout cves` eller `trivy image` mod bygget image efter deploy
+- [x] Ingen konti, emails eller beskedhistorik i MVP — minimal persondata
+- [ ] Dokumentér opbevaring: huddles-tabel (navn + tidsstempler) med TTL;
+      deltagernavne findes kun i hukommelsen under sessionen
