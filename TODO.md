@@ -9,6 +9,42 @@ Afsluttet før refokuseringen (chat-rum, DM, filoverførsel, 1:1-skærmdeling og
 lydopkald) ligger i git-historikken; Playwright- og WebRTC-mønstre derfra
 genbruges.
 
+## Start-prompt til ny session
+
+Kopér blokken herunder som første besked til agenten:
+
+> Fortsæt arbejdet på **Loft** i branchen `feat/loft-k3s-refocus`
+> (M0–M3 færdige, 2026-09-09).
+>
+> Læs først `README.md`, `MIGRATION.md`, `TODO.md` og ADR-drafts
+> `0027-loft-link-rooms.md` + `0028-loft-group-mesh.md`. AGENTS.md's
+> chat-sektioner er historiske indtil M5.
+>
+> Tilstand:
+> - Backend (`chat/`, omdøbes til `loft/` i M5): Rust/Axum.
+>   `POST /v1/lofts`, `GET /v1/lofts/:id`, `DELETE /v1/lofts/:id` med
+>   `X-Owner-Token`, WS `/v1/ws/:loft_id`
+>   (join/roster/signal/media-state/closed), `/healthz`, TTL-cleanup.
+>   Migrationer kører automatisk ved start.
+> - Frontend: `frontend/loft.html` + `frontend/rtc.js` (mesh, perfect
+>   negotiation). `index.html` redirecter til loft.html.
+> - k8s: `k8s/test/` (namespace `loft-test`); GitHub Actions bygger
+>   `ghcr.io/gihc-org/loft`(+web) og kører e2e.
+>
+> Næste opgave (M4): deploy af test-miljø — A-record via
+> `scripts/create-dns-record.sh`, secret `loft-secrets`, firewall i
+> `~/projects/infra/tofu` (3478 + 49152–49200), apply `k8s/test/`,
+> cert staging → prod. Dele af M4 kræver adgang til k3s/pass/infra-repoet —
+> spørg brugeren før trin uden for repoet.
+>
+> Kommandoer:
+> - Unit: `cd chat && cargo test --lib`
+> - Integration: `cd chat && DATABASE_URL=postgres://postgres:postgres@localhost:5432 cargo test`
+> - E2e (backend kørende): `cd e2e && TEST_API_URL=http://localhost:8081 npx playwright test`
+>
+> Gotchas: `TEST_API_URL` uden `/v1`; `frontend/config.js` overskrives i k8s af
+> ConfigMap; e2e bruger sessionStorage-nøglen `loft.noAutoMic`.
+
 ## M0 — Fundament (dokumentation)
 
 - [x] Beslutning: Loft link-rum (Plan B), gæsteadgang, statisk frontend

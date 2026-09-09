@@ -17,6 +17,25 @@ This file provides guidance to AI coding agents working in this repository.
 
 Kør manuelt: `bash scripts/check.sh`
 
+## Nuværende tilstand (2026-09-09)
+
+Projektet er midt i refokuseringen fra chat til **Loft** (WebRTC link-rum med
+gæsteadgang) og migreres fra Caddy + Docker Compose til k3s. Indholdet nedenfor
+under "Project Overview" og "Current stack: Chat" beskriver den **gamle**
+arkitektur og er historisk indtil M5-oprydningen.
+
+Læs først: [README.md](README.md), [MIGRATION.md](MIGRATION.md),
+[TODO.md](TODO.md) og ADR-drafts i `adr-drafts/` (0027, 0028).
+
+- Branch `feat/loft-k3s-refocus` — M0–M3 er færdige; næste fase er M4
+  (k3s-deploy af `loft-test`).
+- Backend ligger i `chat/` (omdøbes til `loft/` i M5): `POST/GET/DELETE
+  /v1/lofts`, WS `/v1/ws/:loft_id`, `/healthz`, TTL-cleanup.
+- Frontend: `frontend/loft.html` + `frontend/rtc.js` (mesh). `index.html`
+  redirecter til loft.html; legacy chat-sider findes stadig i mappen.
+- k8s-manifester: `k8s/test/` (namespace `loft-test`). GitHub Actions bygger
+  `ghcr.io/gihc-org/loft` og `loft-web` samt kører e2e.
+
 ## Project Overview
 
 IPFS-hosted static frontend combined with a self-hosted backend on a VPS. The frontend is served via DNSLink (own domain mapped to an IPFS CID), which gives a stable origin for CORS.

@@ -4,6 +4,10 @@ Driftsopgaver og fejlfindingsprocedurer for ipfs-apps/chat.
 
 Modsat ADR'er (som dokumenterer *hvorfor*) dokumenterer runbooks *hvordan*.
 
+> **Status (2026-09-09):** runbooks beskriver chat-tiden
+> (Caddy/Ansible/IPFS/DM) og er forældede indtil M5-oprydningen. Loft deployer
+> via k3s — se [MIGRATION.md](../MIGRATION.md) og `k8s/test/`.
+
 > **Infrastruktur-afhængighed:** ipfs-apps bruger en delt Caddy fra `infra`-projektet
 > (`~/projectes/infra`). Caddy ejes ikke af dette projekt — se `infra/README.md`
 > for opsætning og drift af platform-laget.
