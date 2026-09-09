@@ -41,7 +41,7 @@ genbruges.
       perfect negotiation (refaktor af chat.html's 1:1-logik)
 - [ ] Genbrug ICE/TURN-logik (`addTurnServer`) og auto-reconnect med backoff
 - [x] Invite: copy-link + `navigator.share` (QR udskudt — kræver ekstern lib)
-- [ ] Luk loft (ejer-nøgle via `DELETE /v1/lofts/:id` + `closed`-broadcast)
+- [x] Luk loft (ejer-nøgle via `DELETE /v1/lofts/:id` + `closed`-broadcast)
 - [ ] Link-preview: beslut backend-rendret `/h/:id` vs. generiske og-tags
 - [ ] Deltager-UI opdateres i realtid via roster/presence-beskeder
 - [ ] Nye sider afløser index/rooms/chat.html (slet når e2e er grøn)
