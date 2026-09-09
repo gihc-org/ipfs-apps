@@ -16,5 +16,4 @@ data:
   realm: "loft.test.gihc.online"
   external-ip: "65.109.233.92"
   allowed-origin: "https://loft.test.gihc.online"
-  base-url: "https://loft.test.gihc.online"
-  frontend-url: "https://loft.test.gihc.online"
+  loft-ttl-hours: "168"

@@ -1,10 +1,7 @@
-pub mod auth;
-pub mod captcha;
 pub mod config;
-pub mod email;
 pub mod models;
 pub mod routes;
-pub mod ws;
+pub mod state;
 
 use axum::{
     http::{HeaderValue, Method, Request},
@@ -12,46 +9,27 @@ use axum::{
     Router,
 };
 use sqlx::PgPool;
-use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 use tower_governor::{
     governor::GovernorConfigBuilder, key_extractor::KeyExtractor, GovernorError, GovernorLayer,
 };
 use tower_http::cors::{Any, CorsLayer};
-use uuid::Uuid;
 
 pub use config::Config;
-pub use ws::RoomMap;
+pub use state::{cleanup_expired_lofts, LoftChannelMap, LoftRegistry};
 
-/// Tæller aktive WS-forbindelser per bruger (til at håndtere flere tabs).
-/// Brugeren er "online" så længe tælleren er > 0.
-pub type OnlineUsers = Arc<RwLock<HashMap<Uuid, u32>>>;
-
-/// Personlig broadcast-kanal per bruger til direkte signal-routing.
-/// Gør det muligt at sende WebRTC-signaler til en bruger uanset hvilket rum
-/// de er forbundet til — nødvendigt for fil-overførsel når parterne ikke er
-/// i samme rum på samme tid.
-pub type UserSenders = Arc<RwLock<HashMap<Uuid, tokio::sync::broadcast::Sender<String>>>>;
-
-/// Shared state injected into every Axum handler via `State<AppState>`.
-///
-/// `db` is a connection pool — cloning it is cheap (Arc under the hood).
-/// `http` is a shared reqwest client for external API calls (Turnstile, Resend).
-/// `rooms` holds in-memory broadcast channels keyed by room UUID string;
-/// restarting the server drops all active WebSocket connections.
+/// Delt tilstand for alle handlers. `db` er en billig klonbar connection pool;
+/// loft-kanaler og deltager-registry lever i hukommelsen → præcis 1 replica.
 #[derive(Clone)]
 pub struct AppState {
     pub db: PgPool,
     pub config: Config,
-    pub rooms: RoomMap,
-    pub http: reqwest::Client,
-    pub online_users: OnlineUsers,
-    pub user_senders: UserSenders,
+    pub loft_channels: LoftChannelMap,
+    pub loft_registry: LoftRegistry,
 }
 
-/// Extracts the first IP from `X-Forwarded-For` (injected by Caddy) so the rate
-/// limiter sees the real client IP, not Caddy's container IP.
+/// Udtrækker første IP fra `X-Forwarded-For` (sat af ingress-nginx) så
+/// rate limiteren ser klientens IP, ikke proxyens.
 #[derive(Clone)]
 struct ForwardedIpExtractor;
 
@@ -70,53 +48,43 @@ impl KeyExtractor for ForwardedIpExtractor {
     }
 }
 
-/// Builds the Axum router with all routes, CORS middleware, and shared state.
-/// Used by both the binary entrypoint and integration tests.
+/// Bygger Axum-routeren med alle routes, CORS og delt state.
+/// Bruges af både binær-entrypoint og integrationstests.
 pub fn build_app(state: AppState) -> Router {
     let cors = build_cors(&state.config.allowed_origin);
 
-    // 3 req/s sustained, burst 30 — sustained rate stops brute force; burst covers
-    // concurrent e2e test workers that all originate from the same IP.
-    let auth_rate_limit = Arc::new(
+    // Loft-oprettelse er den eneste åbne write-endpoint — rate limit for at
+    // forhindre link-spam. Burst dækker konkurrerende e2e-workers.
+    let loft_rate_limit = Arc::new(
         GovernorConfigBuilder::default()
-            .per_second(3)
-            .burst_size(30)
+            .per_second(1)
+            .burst_size(10)
             .key_extractor(ForwardedIpExtractor)
             .finish()
             .unwrap(),
     );
-    let auth_routes = Router::new()
-        .route("/auth/register", post(routes::auth::register))
-        .route("/auth/token", post(routes::auth::login))
-        .route("/auth/forgot-password", post(routes::auth::forgot_password))
-        .route("/auth/reset-password", post(routes::auth::reset_password))
-        .layer(GovernorLayer { config: auth_rate_limit });
+    let loft_routes = Router::new()
+        .route("/lofts", post(routes::lofts::create))
+        .layer(GovernorLayer {
+            config: loft_rate_limit,
+        });
 
     let v1 = Router::new()
-        .merge(auth_routes)
-        .route("/auth/me", get(routes::auth::me).delete(routes::auth::delete_me))
-        .route("/auth/verify", get(routes::auth::verify))
-        .route("/rooms", get(routes::rooms::list).post(routes::rooms::create))
-        .route("/rooms/:id/messages", get(routes::rooms::messages))
-        .route("/users", get(routes::dms::list_users))
-        .route("/dms", get(routes::dms::list_dms).post(routes::dms::create_or_get_dm))
-        .route("/presence", get(routes::presence::list))
-        .route("/files", post(routes::files::upload))
-        .route("/files/:id", get(routes::files::download))
-        .route("/ws/:room_id", get(routes::chat::handler));
+        .merge(loft_routes)
+        .route("/lofts/:id", get(routes::lofts::get))
+        .route("/ws/:loft_id", get(routes::lofts::ws_handler));
 
     Router::new()
         .nest("/v1", v1)
+        .route("/healthz", get(routes::health::healthz))
         .layer(cors)
         .with_state(state)
 }
 
-/// Builds the CORS layer from an origin string.
+/// Bygger CORS-laget fra en origin-streng.
 ///
-/// `"*"` and a specific origin require different tower-http types (`Any` vs
-/// `HeaderValue`), so they can't be unified into a single code path.
-/// In production `ALLOWED_ORIGIN` is set to the DNSLink domain
-/// (`https://app.gihc.online`) so the wildcard branch is only used locally.
+/// `"*"` og en specifik origin kræver forskellige tower-http-typer. I k8s er
+/// frontend og API samme origin, så ALLOWED_ORIGIN bruges kun til lokal udvikling.
 pub fn build_cors(allowed_origin: &str) -> CorsLayer {
     let methods = [Method::GET, Method::POST, Method::PUT, Method::DELETE];
     let headers = [

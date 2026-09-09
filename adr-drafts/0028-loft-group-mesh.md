@@ -23,8 +23,10 @@ når antallet vokser. ADR-0016 udskød gruppe-topologi til en separat ADR.
 - **Server-side deltager-identitet:** når en klient joiner via WS, tildeler
   serveren en deltager-id og tilføjer afsenderen på alle signal-beskeder —
   klienter kan ikke forfalske `from`.
-- **Signalering pr. deltager:** beskeder med `to: <deltager-id>` routes til
-  modtagerens personlige kanal (mekanismen i `user_senders` genbruges).
+- **Signalering broadcastes i loftet** med `to: <deltager-id>`; serveren
+  sætter `from` (deltager-id + navn), og klienten filtrerer på `to`. Simpelt
+  for mesh-størrelser — per-deltager-kanaler kan genindføres hvis loftet
+  vokser.
 - **Roster/presence:** ved join sender serveren den fulde deltagerliste
   (`roster`); `join`/`leave`/`presence` broadcastes til rummet, så klienter
   kan oprette/lukke peer-forbindelser deterministisk.
@@ -38,6 +40,9 @@ når antallet vokser. ADR-0016 udskød gruppe-topologi til en separat ADR.
 
 - Backend-WS udvides med `roster` og media-state-beskeder; chat- og
   fil-beskeder fjernes.
+- Én deltager pr. WebSocket-forbindelse: ved reconnect får klienten en ny
+  deltager-id, og roster-beskeder er kilden til sandheden om hvem der er i
+  loftet.
 - Klienten refaktoreres fra én global PC til et per-peer-kort med
   renegotiation — den største frontend-opgave i M2.
 - TURN bliver vigtigere med flere deltagere bag NAT — coturn beholdes.

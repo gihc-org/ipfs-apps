@@ -34,23 +34,11 @@ spec:
                 configMapKeyRef:
                   name: loft-config
                   key: allowed-origin
-            - name: BASE_URL
+            - name: LOFT_TTL_HOURS
               valueFrom:
                 configMapKeyRef:
                   name: loft-config
-                  key: base-url
-            - name: FRONTEND_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: loft-config
-                  key: frontend-url
-            # TODO M1: fjern UPLOAD_DIR når fil-upload er taget ud af koden.
-            - name: UPLOAD_DIR
-              value: /data/uploads
-          volumeMounts:
-            # TODO M1: kan fjernes sammen med UPLOAD_DIR (read-only rootfs).
-            - name: uploads
-              mountPath: /data/uploads
+                  key: loft-ttl-hours
           readinessProbe:
             httpGet:
               path: /healthz
@@ -77,6 +65,3 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
-      volumes:
-        - name: uploads
-          emptyDir: {}

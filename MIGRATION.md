@@ -67,7 +67,7 @@ Forudsætninger og platform-tilstand står i `../infra/MIGRATION.md` — vigtigs
    ADR-drafts 0027/0028, `k8s/test`-skelet, GitHub Actions-workflow,
    DNS-script og frontend-Dockerfile. Intet deployet endnu.
 1. **Backend (Loft-kerne):** migration `lofts`; `POST /v1/lofts`
-   (rate-limited) og `GET /v1/lofts/:id`; WS `/v1/lofts/:id` med
+   (rate-limited) og `GET /v1/lofts/:id`; WS `/v1/ws/:loft_id` med
    `join`/`leave`/`roster`/`presence`/`signal`; `/healthz`; TTL-oprydning.
    Fjern auth-, room-, DM- og file-stier fra routeren i takt med at WS'eren er
    omskrevet. Dockerfile: non-root + read-only fs (CIS-punkter i TODO).

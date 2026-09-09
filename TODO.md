@@ -20,18 +20,18 @@ genbruges.
 
 ## M1 — Backend: Loft-kerne
 
-- [ ] Migration: `lofts`-tabel (id, navn, created_at, last_active)
-- [ ] `POST /v1/lofts` — opret link-rum, returnér `{ id, url }`
-- [ ] `GET /v1/lofts/:id` — findes rummet? (til link-åbning)
-- [ ] WS `/v1/lofts/:id` — gæste-join med navn; `join`/`leave`/`roster`/
+- [x] Migration: `lofts`-tabel (id, navn, created_at, last_active)
+- [x] `POST /v1/lofts` — opret link-rum, returnér `{ id, url }`
+- [x] `GET /v1/lofts/:id` — findes rummet? (til link-åbning)
+- [x] WS `/v1/ws/:loft_id` — gæste-join med navn; `join`/`leave`/`roster`/
       `presence`/`signal`; serveren sætter `from` på signaler
-- [ ] `/healthz`-endpoint + k8s-probes
-- [ ] TTL-oprydning af inaktive lofts (baggrundsjob eller lazy)
-- [ ] Rate limiting på loft-oprettelse (tower_governor, XFF-baseret)
-- [ ] Fjern auth-, room-, DM-, file- og uploads-stier fra routeren i takt med
+- [x] `/healthz`-endpoint + k8s-probes
+- [x] TTL-oprydning af inaktive lofts (baggrundsjob, LOFT_TTL_HOURS)
+- [x] Rate limiting på loft-oprettelse (tower_governor, XFF-baseret)
+- [x] Fjern auth-, room-, DM-, file- og uploads-stier fra routeren i takt med
       at WS'eren er omskrevet
-- [ ] Dockerfile: non-root-bruger (uid 10001), `no-new-privileges`,
-      read-only rootfs (uploads-sti udgår)
+- [ ] Integrationstests kørt mod lokal PostgreSQL
+- [x] Dockerfile: non-root-bruger (uid 10001); read-only rootfs i k8s-manifest
 
 ## M2 — Frontend: Loft-UI
 

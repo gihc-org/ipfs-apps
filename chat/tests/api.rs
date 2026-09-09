@@ -1,31 +1,53 @@
-//! Integration tests for the HTTP API.
+//! Integrationstests for Loft-API'et.
 //!
-//! These tests require a running PostgreSQL server. Set `DATABASE_URL` to a
-//! superuser connection string (without a database name) before running:
+//! Kræver en kørende PostgreSQL. Sæt `DATABASE_URL` til en superuser-forbindelse
+//! (uden databasenavn) før kørsel:
 //!
 //! ```
 //! DATABASE_URL=postgres://postgres:password@localhost:5432 cargo test
 //! ```
 //!
-//! `#[sqlx::test]` creates a fresh database for each test and drops it after,
-//! so tests can run in parallel without interfering with each other.
+//! `#[sqlx::test]` opretter en frisk database pr. test og dropper den bagefter.
 
-use axum::{body::Body, http::{Request, StatusCode}};
+use axum::{
+    body::Body,
+    http::{Request, StatusCode},
+};
 use futures::{SinkExt, StreamExt};
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use sqlx::PgPool;
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tower::ServiceExt;
 
-use chat::{AppState, Config, RoomMap, UserSenders, build_app};
+use chat::{build_app, AppState, Config};
 
-/// Starts a real TCP listener on a random port and returns the bound address.
+type WsSink = futures::stream::SplitSink<
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+    WsMessage,
+>;
+type WsStream = futures::stream::SplitStream<
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+>;
+
+fn test_state(pool: PgPool) -> AppState {
+    AppState {
+        db: pool,
+        config: Config {
+            database_url: String::new(),
+            allowed_origin: "*".into(),
+            loft_ttl_hours: 168,
+        },
+        loft_channels: Arc::new(RwLock::new(HashMap::new())),
+        loft_registry: Arc::new(RwLock::new(HashMap::new())),
+    }
+}
+
+/// Starter en rigtig TCP-listener på en tilfældig port (til WS-tests).
 async fn start_server(pool: PgPool) -> std::net::SocketAddr {
-    let state = test_state(pool);
-    let app = build_app(state);
+    let app = build_app(test_state(pool));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
@@ -34,61 +56,19 @@ async fn start_server(pool: PgPool) -> std::net::SocketAddr {
     addr
 }
 
-/// Connects a WebSocket client and returns the split sink/stream.
-async fn ws_connect(
-    addr: std::net::SocketAddr,
-    room_id: &str,
-    token: &str,
-) -> (
-    futures::stream::SplitSink<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, WsMessage>,
-    futures::stream::SplitStream<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>>,
-) {
-    let url = format!("ws://{}/v1/ws/{}?token={}", addr, room_id, token);
-    let (ws, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
-    ws.split()
-}
-
-fn test_state(db: PgPool) -> AppState {
-    AppState {
-        db,
-        config: Config {
-            database_url: String::new(),
-            jwt_secret: "test-secret-key".into(),
-            jwt_expire_hours: 24,
-            allowed_origin: "*".into(),
-            turnstile_secret: String::new(),
-            resend_api_key: String::new(),
-            resend_from: "noreply@test.example".into(),
-            base_url: "http://localhost:8001".into(),
-            frontend_url: "http://localhost:8001".into(),
-            upload_dir: "/tmp/test-uploads".into(),
-        },
-        rooms: Arc::new(RwLock::new(HashMap::new())) as RoomMap,
-        http: reqwest::Client::new(),
-        online_users: Arc::new(RwLock::new(HashMap::new())),
-        user_senders: Arc::new(RwLock::new(HashMap::new())) as UserSenders,
-    }
-}
-
-/// Generic request helper. Clones the router for each call (required by oneshot).
 async fn api(
     app: &axum::Router,
     method: &str,
     path: &str,
-    token: Option<&str>,
     body: Option<Value>,
 ) -> (StatusCode, Value) {
     let mut builder = Request::builder().method(method).uri(path);
-    if let Some(tok) = token {
-        builder = builder.header("authorization", format!("Bearer {tok}"));
-    }
     let req_body = if let Some(j) = body {
         builder = builder.header("content-type", "application/json");
         Body::from(j.to_string())
     } else {
         Body::empty()
     };
-
     let resp = app
         .clone()
         .oneshot(builder.body(req_body).unwrap())
@@ -100,613 +80,323 @@ async fn api(
     (status, value)
 }
 
-/// Registers a user and returns their JWT.
-async fn register_and_login(app: &axum::Router, username: &str, password: &str) -> String {
-    let email = format!("{username}@test.example");
-    api(
-        app,
-        "POST",
-        "/v1/auth/register",
-        None,
-        Some(json!({"username": username, "password": password, "email": email, "turnstile_token": "test"})),
-    )
-    .await;
-    let (_, body) = api(
-        app,
-        "POST",
-        "/v1/auth/token",
-        None,
-        Some(json!({"username": username, "password": password})),
-    )
-    .await;
-    body["access_token"].as_str().unwrap().to_string()
+async fn create_loft(app: &axum::Router, name: Option<&str>) -> String {
+    let body = name.map(|n| json!({"name": n}));
+    let (status, resp) = api(app, "POST", "/v1/lofts", body).await;
+    assert_eq!(status, StatusCode::CREATED, "create loft failed: {resp}");
+    resp["id"].as_str().unwrap().to_string()
 }
 
-// ── /auth/register ───────────────────────────────────────────────────────────
-
-#[sqlx::test(migrations = "./migrations")]
-async fn register_success(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    let (status, body) = api(
-        &app,
-        "POST",
-        "/v1/auth/register",
-        None,
-        Some(json!({"username": "alice", "password": "password123", "email": "alice@test.example", "turnstile_token": "test"})),
-    )
-    .await;
-    assert_eq!(status, StatusCode::CREATED);
-    assert_eq!(body["username"], "alice");
-    assert!(body["id"].is_string());
+async fn ws_connect(addr: std::net::SocketAddr, loft_id: &str) -> (WsSink, WsStream) {
+    let url = format!("ws://{addr}/v1/ws/{loft_id}");
+    let (ws, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+    ws.split()
 }
 
-#[sqlx::test(migrations = "./migrations")]
-async fn register_duplicate_username(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    api(&app, "POST", "/v1/auth/register", None, Some(json!({"username": "alice", "password": "password123", "email": "alice@test.example", "turnstile_token": "test"}))).await;
-    let (status, body) = api(
-        &app,
-        "POST",
-        "/v1/auth/register",
-        None,
-        Some(json!({"username": "alice", "password": "different1", "email": "alice2@test.example", "turnstile_token": "test"})),
-    )
-    .await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_eq!(body["detail"], "Brugernavnet er allerede taget");
+async fn ws_join(addr: std::net::SocketAddr, loft_id: &str, name: &str) -> (WsSink, WsStream) {
+    let (mut tx, rx) = ws_connect(addr, loft_id).await;
+    tx.send(WsMessage::Text(
+        json!({"type": "join", "name": name}).to_string(),
+    ))
+    .await
+    .unwrap();
+    (tx, rx)
 }
 
-// ── /auth/token ──────────────────────────────────────────────────────────────
-
-#[sqlx::test(migrations = "./migrations")]
-async fn login_success(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    api(&app, "POST", "/v1/auth/register", None, Some(json!({"username": "bob", "password": "password123", "email": "bob@test.example", "turnstile_token": "test"}))).await;
-    let (status, body) = api(
-        &app,
-        "POST",
-        "/v1/auth/token",
-        None,
-        Some(json!({"username": "bob", "password": "password123"})),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(body["access_token"].is_string());
-    assert_eq!(body["token_type"], "bearer");
+async fn recv_value(rx: &mut WsStream) -> Value {
+    let msg = tokio::time::timeout(Duration::from_secs(3), rx.next())
+        .await
+        .expect("timeout waiting for WS message")
+        .expect("WS stream closed")
+        .expect("WS error");
+    serde_json::from_str(msg.to_text().unwrap()).unwrap()
 }
 
-#[sqlx::test(migrations = "./migrations")]
-async fn login_wrong_password(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    api(&app, "POST", "/v1/auth/register", None, Some(json!({"username": "carol", "password": "password123", "email": "carol@test.example", "turnstile_token": "test"}))).await;
-    let (status, _) = api(
-        &app,
-        "POST",
-        "/v1/auth/token",
-        None,
-        Some(json!({"username": "carol", "password": "wrong"})),
-    )
-    .await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
-}
-
-#[sqlx::test(migrations = "./migrations")]
-async fn login_unknown_user(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    let (status, _) = api(
-        &app,
-        "POST",
-        "/v1/auth/token",
-        None,
-        Some(json!({"username": "nobody", "password": "pw"})),
-    )
-    .await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
-}
-
-// ── /auth/me ─────────────────────────────────────────────────────────────────
-
-#[sqlx::test(migrations = "./migrations")]
-async fn me_returns_current_user(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    let token = register_and_login(&app,"dave", "password").await;
-    let (status, body) = api(&app, "GET", "/v1/auth/me", Some(&token), None).await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["username"], "dave");
-    assert!(body["email"].is_string());
-    assert!(body["email_verified"].is_boolean());
-    assert!(body["created_at"].is_string());
-}
-
-#[sqlx::test(migrations = "./migrations")]
-async fn delete_me_removes_account(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    let token = register_and_login(&app,"todelete", "password").await;
-    let (status, _) = api(&app, "DELETE", "/v1/auth/me", Some(&token), None).await;
-    assert_eq!(status, StatusCode::NO_CONTENT);
-    // Token is now invalid — account is gone
-    let (status, _) = api(&app, "GET", "/v1/auth/me", Some(&token), None).await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
-}
-
-#[sqlx::test(migrations = "./migrations")]
-async fn delete_me_removes_dm_rooms(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    let token_a = register_and_login(&app,"alice", "password").await;
-    let token_b = register_and_login(&app,"bob", "password").await;
-    let (_, user_b) = api(&app, "GET", "/v1/auth/me", Some(&token_b), None).await;
-    api(&app, "POST", "/v1/dms", Some(&token_a),
-        Some(json!({"user_id": user_b["id"]}))).await;
-
-    api(&app, "DELETE", "/v1/auth/me", Some(&token_a), None).await;
-
-    // Bob's DM list should now be empty
-    let (status, body) = api(&app, "GET", "/v1/dms", Some(&token_b), None).await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(body.as_array().unwrap().len(), 0);
-}
-
-#[sqlx::test(migrations = "./migrations")]
-async fn delete_me_requires_auth(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    let (status, _) = api(&app, "DELETE", "/v1/auth/me", None, None).await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
-}
-
-#[sqlx::test(migrations = "./migrations")]
-async fn me_without_token(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    let (status, _) = api(&app, "GET", "/v1/auth/me", None, None).await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
-}
-
-#[sqlx::test(migrations = "./migrations")]
-async fn me_with_invalid_token(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    let (status, _) = api(&app, "GET", "/v1/auth/me", Some("not.a.jwt"), None).await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
-}
-
-// ── /rooms ───────────────────────────────────────────────────────────────────
-
-#[sqlx::test(migrations = "./migrations")]
-async fn list_rooms_requires_auth(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    let (status, _) = api(&app, "GET", "/v1/rooms", None, None).await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
-}
-
-#[sqlx::test(migrations = "./migrations")]
-async fn list_rooms_empty(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    let token = register_and_login(&app,"eve", "password").await;
-    let (status, body) = api(&app, "GET", "/v1/rooms", Some(&token), None).await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(body, json!([]));
-}
-
-#[sqlx::test(migrations = "./migrations")]
-async fn create_room_success(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    let token = register_and_login(&app,"frank", "password").await;
-    let (status, body) = api(
-        &app,
-        "POST",
-        "/v1/rooms",
-        Some(&token),
-        Some(json!({"name": "general"})),
-    )
-    .await;
-    assert_eq!(status, StatusCode::CREATED);
-    assert_eq!(body["name"], "general");
-    assert!(body["id"].is_string());
-}
-
-#[sqlx::test(migrations = "./migrations")]
-async fn create_room_duplicate(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    let token = register_and_login(&app,"grace", "password").await;
-    api(&app, "POST", "/v1/rooms", Some(&token), Some(json!({"name": "lobby"}))).await;
-    let (status, body) = api(
-        &app,
-        "POST",
-        "/v1/rooms",
-        Some(&token),
-        Some(json!({"name": "lobby"})),
-    )
-    .await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_eq!(body["detail"], "Room already exists");
-}
-
-#[sqlx::test(migrations = "./migrations")]
-async fn create_room_requires_auth(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    let (status, _) = api(&app, "POST", "/v1/rooms", None, Some(json!({"name": "secret"}))).await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
-}
-
-#[sqlx::test(migrations = "./migrations")]
-async fn list_rooms_shows_created_rooms(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    let token = register_and_login(&app,"henry", "password").await;
-    api(&app, "POST", "/v1/rooms", Some(&token), Some(json!({"name": "alpha"}))).await;
-    api(&app, "POST", "/v1/rooms", Some(&token), Some(json!({"name": "beta"}))).await;
-    let (status, body) = api(&app, "GET", "/v1/rooms", Some(&token), None).await;
-    assert_eq!(status, StatusCode::OK);
-    let rooms = body.as_array().unwrap();
-    assert_eq!(rooms.len(), 2);
-    let names: Vec<&str> = rooms.iter().map(|r| r["name"].as_str().unwrap()).collect();
-    assert!(names.contains(&"alpha"));
-    assert!(names.contains(&"beta"));
-}
-
-// ── /rooms/:id/messages ──────────────────────────────────────────────────────
-
-#[sqlx::test(migrations = "./migrations")]
-async fn messages_empty_for_new_room(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    let token = register_and_login(&app,"iris", "password").await;
-    let (_, room) = api(
-        &app,
-        "POST",
-        "/v1/rooms",
-        Some(&token),
-        Some(json!({"name": "empty-room"})),
-    )
-    .await;
-    let room_id = room["id"].as_str().unwrap();
-    let (status, body) = api(&app, "GET", &format!("/v1/rooms/{room_id}/messages"), Some(&token), None).await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(body, json!([]));
-}
-
-#[sqlx::test(migrations = "./migrations")]
-async fn messages_requires_auth(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    let token = register_and_login(&app,"jack", "password").await;
-    let (_, room) = api(
-        &app,
-        "POST",
-        "/v1/rooms",
-        Some(&token),
-        Some(json!({"name": "private"})),
-    )
-    .await;
-    let room_id = room["id"].as_str().unwrap();
-    let (status, _) = api(&app, "GET", &format!("/v1/rooms/{room_id}/messages"), None, None).await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
-}
-
-// ── /users ─────────────────────────────────────────────────────────────────────
-
-#[sqlx::test(migrations = "./migrations")]
-async fn list_users_excludes_self(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    let token = register_and_login(&app,"alice", "password").await;
-    register_and_login(&app,"bob", "password").await;
-    let (status, body) = api(&app, "GET", "/v1/users", Some(&token), None).await;
-    assert_eq!(status, StatusCode::OK);
-    let users = body.as_array().unwrap();
-    assert_eq!(users.len(), 1);
-    assert_eq!(users[0]["username"], "bob");
-}
-
-#[sqlx::test(migrations = "./migrations")]
-async fn search_users_finds_by_substring(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    let token = register_and_login(&app,"alice", "password").await;
-    register_and_login(&app,"bobby", "password").await;
-    register_and_login(&app,"carol", "password").await;
-    let (status, body) = api(&app, "GET", "/users?search=bob", Some(&token), None).await;
-    assert_eq!(status, StatusCode::OK);
-    let users = body.as_array().unwrap();
-    assert_eq!(users.len(), 1);
-    assert_eq!(users[0]["username"], "bobby");
-}
-
-#[sqlx::test(migrations = "./migrations")]
-async fn list_users_requires_auth(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    let (status, _) = api(&app, "GET", "/v1/users", None, None).await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
-}
-
-// ── /dms ───────────────────────────────────────────────────────────────────────
-
-#[sqlx::test(migrations = "./migrations")]
-async fn create_dm_returns_room(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    let token_a = register_and_login(&app,"alice", "password").await;
-    let token_b = register_and_login(&app,"bob", "password").await;
-    let (_, user_b) = api(&app, "GET", "/v1/auth/me", Some(&token_b), None).await;
-    let bob_id = user_b["id"].as_str().unwrap();
-
-    let (status, body) = api(&app, "POST", "/v1/dms", Some(&token_a),
-        Some(json!({"user_id": bob_id}))).await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(body["room_id"].is_string());
-    assert_eq!(body["other_user"], "bob");
-}
-
-#[sqlx::test(migrations = "./migrations")]
-async fn dm_is_idempotent(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    let token_a = register_and_login(&app,"alice", "password").await;
-    let token_b = register_and_login(&app,"bob", "password").await;
-    let (_, user_a) = api(&app, "GET", "/v1/auth/me", Some(&token_a), None).await;
-    let (_, user_b) = api(&app, "GET", "/v1/auth/me", Some(&token_b), None).await;
-    let alice_id = user_a["id"].as_str().unwrap();
-    let bob_id = user_b["id"].as_str().unwrap();
-
-    let (_, dm1) = api(&app, "POST", "/v1/dms", Some(&token_a),
-        Some(json!({"user_id": bob_id}))).await;
-    // Bob creates DM with Alice — same room
-    let (_, dm2) = api(&app, "POST", "/v1/dms", Some(&token_b),
-        Some(json!({"user_id": alice_id}))).await;
-    assert_eq!(dm1["room_id"], dm2["room_id"]);
-}
-
-#[sqlx::test(migrations = "./migrations")]
-async fn cannot_dm_self(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    let token = register_and_login(&app,"alice", "password").await;
-    let (_, me) = api(&app, "GET", "/v1/auth/me", Some(&token), None).await;
-    let (status, _) = api(&app, "POST", "/v1/dms", Some(&token),
-        Some(json!({"user_id": me["id"]}))).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-}
-
-#[sqlx::test(migrations = "./migrations")]
-async fn cannot_dm_nonexistent_user(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    let token = register_and_login(&app,"alice", "password").await;
-    let (status, _) = api(&app, "POST", "/v1/dms", Some(&token),
-        Some(json!({"user_id": "00000000-0000-0000-0000-000000000000"}))).await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
-}
-
-#[sqlx::test(migrations = "./migrations")]
-async fn list_dms_shows_conversations(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    let token_a = register_and_login(&app,"alice", "password").await;
-    let token_b = register_and_login(&app,"bob", "password").await;
-    let (_, user_b) = api(&app, "GET", "/v1/auth/me", Some(&token_b), None).await;
-
-    api(&app, "POST", "/v1/dms", Some(&token_a),
-        Some(json!({"user_id": user_b["id"]}))).await;
-
-    let (status, body) = api(&app, "GET", "/v1/dms", Some(&token_a), None).await;
-    assert_eq!(status, StatusCode::OK);
-    let dms = body.as_array().unwrap();
-    assert_eq!(dms.len(), 1);
-    assert_eq!(dms[0]["other_username"], "bob");
-    assert!(dms[0]["room_id"].is_string());
-    assert!(dms[0]["other_user_id"].is_string());
-}
-
-#[sqlx::test(migrations = "./migrations")]
-async fn list_dms_requires_auth(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    let (status, _) = api(&app, "GET", "/v1/dms", None, None).await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
-}
-
-// ── DM membership enforcement ──────────────────────────────────────────────────
-
-#[sqlx::test(migrations = "./migrations")]
-async fn rooms_list_excludes_dm_rooms(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    let token_a = register_and_login(&app,"alice", "password").await;
-    let token_b = register_and_login(&app,"bob", "password").await;
-
-    api(&app, "POST", "/v1/rooms", Some(&token_a),
-        Some(json!({"name": "public"}))).await;
-
-    let (_, user_b) = api(&app, "GET", "/v1/auth/me", Some(&token_b), None).await;
-    api(&app, "POST", "/v1/dms", Some(&token_a),
-        Some(json!({"user_id": user_b["id"]}))).await;
-
-    let (status, body) = api(&app, "GET", "/v1/rooms", Some(&token_a), None).await;
-    assert_eq!(status, StatusCode::OK);
-    let rooms = body.as_array().unwrap();
-    assert_eq!(rooms.len(), 1);
-    assert_eq!(rooms[0]["name"], "public");
-}
-
-#[sqlx::test(migrations = "./migrations")]
-async fn non_member_cannot_read_dm_messages(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    let token_a = register_and_login(&app,"alice", "password").await;
-    let token_b = register_and_login(&app,"bob", "password").await;
-    let token_c = register_and_login(&app,"carol", "password").await;
-
-    let (_, user_b) = api(&app, "GET", "/v1/auth/me", Some(&token_b), None).await;
-    let (_, dm) = api(&app, "POST", "/v1/dms", Some(&token_a),
-        Some(json!({"user_id": user_b["id"]}))).await;
-    let room_id = dm["room_id"].as_str().unwrap();
-
-    let (status, _) = api(&app, "GET",
-        &format!("/v1/rooms/{room_id}/messages"), Some(&token_c), None).await;
-    assert_eq!(status, StatusCode::FORBIDDEN);
-}
-
-#[sqlx::test(migrations = "./migrations")]
-async fn member_can_read_dm_messages(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    let token_a = register_and_login(&app,"alice", "password").await;
-    let token_b = register_and_login(&app,"bob", "password").await;
-
-    let (_, user_b) = api(&app, "GET", "/v1/auth/me", Some(&token_b), None).await;
-    let (_, dm) = api(&app, "POST", "/v1/dms", Some(&token_a),
-        Some(json!({"user_id": user_b["id"]}))).await;
-    let room_id = dm["room_id"].as_str().unwrap();
-
-    // Bob, the other member, can read messages
-    let (status, body) = api(&app, "GET",
-        &format!("/v1/rooms/{room_id}/messages"), Some(&token_b), None).await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(body.is_array());
-}
-
-#[sqlx::test(migrations = "./migrations")]
-async fn concurrent_dm_creation_yields_same_room(pool: PgPool) {
-    let app = build_app(test_state(pool));
-    let token_a = register_and_login(&app,"alice", "password").await;
-    let token_b = register_and_login(&app,"bob", "password").await;
-    
-    let (_, user_a) = api(&app, "GET", "/v1/auth/me", Some(&token_a), None).await;
-    let (_, user_b) = api(&app, "GET", "/v1/auth/me", Some(&token_b), None).await;
-    let alice_id = user_a["id"].as_str().unwrap();
-    let bob_id = user_b["id"].as_str().unwrap();
-
-    // Simulate concurrent DM creation: both users create DM with each other simultaneously
-    let app_clone = app.clone();
-    let token_a_clone = token_a.clone();
-    let token_b_clone = token_b.clone();
-    let bob_id_clone = bob_id.to_string();
-    let alice_id_clone = alice_id.to_string();
-
-    let (dm1, dm2) = tokio::join!(
-        async {
-            api(&app, "POST", "/v1/dms", Some(&token_a_clone),
-                Some(json!({"user_id": bob_id_clone}))).await
-        },
-        async {
-            api(&app_clone, "POST", "/v1/dms", Some(&token_b_clone),
-                Some(json!({"user_id": alice_id_clone}))).await
+async fn recv_until(rx: &mut WsStream, mut pred: impl FnMut(&Value) -> bool) -> Value {
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            let msg = recv_value(rx).await;
+            if pred(&msg) {
+                return msg;
+            }
         }
+    })
+    .await
+    .expect("timeout waiting for matching WS message")
+}
+
+fn participant_id<'a>(msg: &'a Value, name: &str) -> &'a str {
+    msg["participants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["name"] == name)
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+}
+
+// ── /healthz ───────────────────────────────────────────────────────────────
+
+#[sqlx::test(migrations = "./migrations")]
+async fn healthz_returns_ok(pool: PgPool) {
+    let app = build_app(test_state(pool));
+    let (status, _) = api(&app, "GET", "/healthz", None).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+// ── /v1/lofts ──────────────────────────────────────────────────────────────
+
+#[sqlx::test(migrations = "./migrations")]
+async fn create_loft_returns_id_and_url(pool: PgPool) {
+    let app = build_app(test_state(pool));
+    let (status, body) = api(
+        &app,
+        "POST",
+        "/v1/lofts",
+        Some(json!({"name": "Morgenmøde"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let id = body["id"].as_str().unwrap();
+    assert!(body["name"].as_str().unwrap().contains("Morgenmøde"));
+    assert_eq!(body["url"], format!("/loft.html?id={id}"));
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn create_loft_defaults_name(pool: PgPool) {
+    let app = build_app(test_state(pool));
+    let (status, body) = api(&app, "POST", "/v1/lofts", Some(json!({}))).await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(body["name"], "Loft");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn create_loft_rejects_too_long_name(pool: PgPool) {
+    let app = build_app(test_state(pool));
+    let (status, body) = api(
+        &app,
+        "POST",
+        "/v1/lofts",
+        Some(json!({"name": "x".repeat(51)})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["detail"].as_str().unwrap().contains("1–50 tegn"));
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn get_loft_returns_metadata(pool: PgPool) {
+    let app = build_app(test_state(pool));
+    let id = create_loft(&app, Some("Planlægning")).await;
+    let (status, body) = api(&app, "GET", &format!("/v1/lofts/{id}"), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["id"], id);
+    assert_eq!(body["name"], "Planlægning");
+    assert!(body["created_at"].is_string());
+    assert!(body["last_active"].is_string());
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn get_unknown_loft_returns_404(pool: PgPool) {
+    let app = build_app(test_state(pool));
+    let (status, body) = api(
+        &app,
+        "GET",
+        "/v1/lofts/00000000-0000-0000-0000-000000000000",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body["detail"], "Loftet findes ikke");
+}
+
+// ── WebSocket: join/roster ─────────────────────────────────────────────────
+
+#[sqlx::test(migrations = "./migrations")]
+async fn ws_unknown_loft_is_rejected(pool: PgPool) {
+    let addr = start_server(pool).await;
+    let url = format!("ws://{addr}/v1/ws/00000000-0000-0000-0000-000000000000");
+    assert!(
+        tokio_tungstenite::connect_async(&url).await.is_err(),
+        "WS til ukendt loft skal afvises"
     );
-
-    // Both requests should succeed and return the same room_id
-    let (status1, body1) = dm1;
-    let (status2, body2) = dm2;
-    assert_eq!(status1, StatusCode::OK);
-    assert_eq!(status2, StatusCode::OK);
-    assert_eq!(body1["room_id"], body2["room_id"]);
-}
-
-// ── WebRTC signaling ──────────────────────────────────────────────────────────
-
-#[sqlx::test(migrations = "./migrations")]
-async fn signal_forwarded_with_server_stamped_from(pool: PgPool) {
-    let addr = start_server(pool.clone()).await;
-    let app = build_app(test_state(pool));
-
-    let token_a = register_and_login(&app, "alice", "password").await;
-    let token_b = register_and_login(&app, "bob", "password").await;
-    let (_, user_a) = api(&app, "GET", "/v1/auth/me", Some(&token_a), None).await;
-    let (_, user_b) = api(&app, "GET", "/v1/auth/me", Some(&token_b), None).await;
-    let alice_id = user_a["id"].as_str().unwrap();
-    let bob_id = user_b["id"].as_str().unwrap();
-
-    let (_, dm) = api(&app, "POST", "/v1/dms", Some(&token_a),
-        Some(json!({"user_id": bob_id}))).await;
-    let room_id = dm["room_id"].as_str().unwrap();
-
-    let (mut alice_tx, mut alice_rx) = ws_connect(addr, room_id, &token_a).await;
-    let (_, mut bob_rx) = ws_connect(addr, room_id, &token_b).await;
-
-    // Drain join events
-    alice_rx.next().await; // alice sees her own join
-    bob_rx.next().await;   // bob sees alice's join
-    alice_rx.next().await; // alice sees bob's join
-
-    // Alice sends a WebRTC offer to Bob
-    let offer = json!({
-        "type": "signal",
-        "target": bob_id,
-        "signal": {"type": "offer", "sdp": "v=0\r\n..."}
-    });
-    alice_tx.send(WsMessage::Text(offer.to_string().into())).await.unwrap();
-
-    // Bob receives the forwarded signal with `from` set to Alice's UUID by the server
-    let msg = tokio::time::timeout(
-        std::time::Duration::from_secs(3),
-        bob_rx.next(),
-    ).await.unwrap().unwrap().unwrap();
-
-    let received: Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
-    assert_eq!(received["type"], "signal");
-    assert_eq!(received["from"], alice_id);
-    assert_eq!(received["target"], bob_id);
-    assert_eq!(received["signal"]["type"], "offer");
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn signal_with_invalid_target_is_dropped(pool: PgPool) {
-    let addr = start_server(pool.clone()).await;
-    let app = build_app(test_state(pool));
-
-    let token_a = register_and_login(&app, "alice", "password").await;
-    let token_b = register_and_login(&app, "bob", "password").await;
-    let (_, user_b) = api(&app, "GET", "/v1/auth/me", Some(&token_b), None).await;
-    let bob_id = user_b["id"].as_str().unwrap();
-
-    let (_, dm) = api(&app, "POST", "/v1/dms", Some(&token_a),
-        Some(json!({"user_id": bob_id}))).await;
-    let room_id = dm["room_id"].as_str().unwrap();
-
-    let (mut alice_tx, mut alice_rx) = ws_connect(addr, room_id, &token_a).await;
-    let (_, mut bob_rx) = ws_connect(addr, room_id, &token_b).await;
-
-    // Drain join events
-    alice_rx.next().await;
-    bob_rx.next().await;
-    alice_rx.next().await;
-
-    // Send signal with a non-UUID target — should be silently dropped
-    let bad_signal = json!({
-        "type": "signal",
-        "target": "not-a-uuid",
-        "signal": {"type": "offer", "sdp": "..."}
-    });
-    alice_tx.send(WsMessage::Text(bad_signal.to_string().into())).await.unwrap();
-
-    // Bob should receive nothing within a short window
-    let result = tokio::time::timeout(
-        std::time::Duration::from_millis(300),
-        bob_rx.next(),
-    ).await;
-    assert!(result.is_err(), "Bob should not receive a signal with an invalid target");
-}
-
-#[sqlx::test(migrations = "./migrations")]
-async fn signal_is_not_persisted_to_database(pool: PgPool) {
-    let addr = start_server(pool.clone()).await;
+async fn join_receives_roster_and_broadcasts(pool: PgPool) {
     let app = build_app(test_state(pool.clone()));
+    let loft_id = create_loft(&app, None).await;
+    let addr = start_server(pool).await;
 
-    let token_a = register_and_login(&app, "alice", "password").await;
-    let token_b = register_and_login(&app, "bob", "password").await;
-    let (_, user_b) = api(&app, "GET", "/v1/auth/me", Some(&token_b), None).await;
-    let bob_id = user_b["id"].as_str().unwrap();
+    let (_, mut alice_rx) = ws_join(addr, &loft_id, "alice").await;
+    let alice_roster = recv_until(&mut alice_rx, |m| m["type"] == "roster").await;
+    assert_eq!(alice_roster["participants"].as_array().unwrap().len(), 1);
+    let alice_id = participant_id(&alice_roster, "alice").to_string();
+    let alice_join = recv_until(&mut alice_rx, |m| {
+        m["type"] == "join" && m["participant"]["name"] == "alice"
+    })
+    .await;
+    assert_eq!(alice_join["participant"]["id"], alice_id);
 
-    let (_, dm) = api(&app, "POST", "/v1/dms", Some(&token_a),
-        Some(json!({"user_id": bob_id}))).await;
-    let room_id = dm["room_id"].as_str().unwrap();
+    let (_, mut bob_rx) = ws_join(addr, &loft_id, "bob").await;
+    let bob_roster = recv_until(&mut bob_rx, |m| m["type"] == "roster").await;
+    let names: Vec<&str> = bob_roster["participants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["name"].as_str().unwrap())
+        .collect();
+    assert!(names.contains(&"alice"));
+    assert!(names.contains(&"bob"));
 
-    let (mut alice_tx, mut alice_rx) = ws_connect(addr, room_id, &token_a).await;
-    let (_, mut bob_rx) = ws_connect(addr, room_id, &token_b).await;
+    let bob_join = recv_until(&mut alice_rx, |m| {
+        m["type"] == "join" && m["participant"]["name"] == "bob"
+    })
+    .await;
+    assert_eq!(
+        bob_join["participant"]["id"],
+        participant_id(&bob_roster, "bob")
+    );
+}
 
-    alice_rx.next().await;
-    bob_rx.next().await;
-    alice_rx.next().await;
+// ── WebSocket: signalering ─────────────────────────────────────────────────
 
-    alice_tx.send(WsMessage::Text(json!({
-        "type": "signal",
-        "target": bob_id,
-        "signal": {"type": "offer", "sdp": "..."}
-    }).to_string().into())).await.unwrap();
+#[sqlx::test(migrations = "./migrations")]
+async fn signal_is_forwarded_with_server_stamped_from(pool: PgPool) {
+    let app = build_app(test_state(pool.clone()));
+    let loft_id = create_loft(&app, None).await;
+    let addr = start_server(pool).await;
 
-    // Wait for Bob to receive it, confirming it was forwarded
-    tokio::time::timeout(std::time::Duration::from_secs(3), bob_rx.next())
-        .await.unwrap();
+    let (mut alice_tx, mut alice_rx) = ws_join(addr, &loft_id, "alice").await;
+    let alice_roster = recv_until(&mut alice_rx, |m| m["type"] == "roster").await;
+    let alice_id = participant_id(&alice_roster, "alice").to_string();
 
-    // Verify no messages were written to the database
-    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM messages WHERE room_id = $1")
-        .bind(uuid::Uuid::parse_str(room_id).unwrap())
-        .fetch_one(&pool)
+    let (_, mut bob_rx) = ws_join(addr, &loft_id, "bob").await;
+    let bob_roster = recv_until(&mut bob_rx, |m| m["type"] == "roster").await;
+    let bob_id = participant_id(&bob_roster, "bob").to_string();
+    recv_until(&mut alice_rx, |m| m["type"] == "join").await;
+
+    // Klienten forsøger at forfalske `from` — serveren skal overskrive den.
+    alice_tx
+        .send(WsMessage::Text(
+            json!({
+                "type": "signal",
+                "from": "spoofed",
+                "to": bob_id,
+                "signal": {"type": "offer", "sdp": "v=0"}
+            })
+            .to_string(),
+        ))
         .await
         .unwrap();
-    assert_eq!(count.0, 0, "Signal messages must not be persisted");
+
+    let signal = recv_until(&mut bob_rx, |m| m["type"] == "signal").await;
+    assert_eq!(signal["from"]["id"], alice_id);
+    assert_eq!(signal["from"]["name"], "alice");
+    assert_eq!(signal["to"], bob_id);
+    assert_eq!(signal["signal"]["type"], "offer");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn signal_to_unknown_participant_is_dropped(pool: PgPool) {
+    let app = build_app(test_state(pool.clone()));
+    let loft_id = create_loft(&app, None).await;
+    let addr = start_server(pool).await;
+
+    let (mut alice_tx, mut alice_rx) = ws_join(addr, &loft_id, "alice").await;
+    recv_until(&mut alice_rx, |m| m["type"] == "roster").await;
+    let (_, mut bob_rx) = ws_join(addr, &loft_id, "bob").await;
+    recv_until(&mut bob_rx, |m| m["type"] == "roster").await;
+    // Bobs egen join-broadcast ligger stadig i køen — dræn den, så
+    // timeout-vinduet nedenfor kun kan indeholde et (utilsigtet) signal.
+    recv_until(&mut bob_rx, |m| m["type"] == "join").await;
+
+    alice_tx
+        .send(WsMessage::Text(
+            json!({
+                "type": "signal",
+                "to": "00000000-0000-0000-0000-000000000000",
+                "signal": {"type": "offer"}
+            })
+            .to_string(),
+        ))
+        .await
+        .unwrap();
+
+    let result = tokio::time::timeout(Duration::from_millis(300), bob_rx.next()).await;
+    assert!(
+        result.is_err(),
+        "Bob skal ikke modtage et signal til ukendt deltager"
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn signal_before_join_is_ignored(pool: PgPool) {
+    let app = build_app(test_state(pool.clone()));
+    let loft_id = create_loft(&app, None).await;
+    let addr = start_server(pool).await;
+
+    let (mut alice_tx, mut alice_rx) = ws_connect(addr, &loft_id).await;
+    alice_tx
+        .send(WsMessage::Text(
+            json!({"type": "signal", "to": "x", "signal": {}}).to_string(),
+        ))
+        .await
+        .unwrap();
+    alice_tx
+        .send(WsMessage::Text(
+            json!({"type": "join", "name": "alice"}).to_string(),
+        ))
+        .await
+        .unwrap();
+
+    let roster = recv_until(&mut alice_rx, |m| m["type"] == "roster").await;
+    assert_eq!(roster["participants"].as_array().unwrap().len(), 1);
+}
+
+// ── WebSocket: relay og leave ──────────────────────────────────────────────
+
+#[sqlx::test(migrations = "./migrations")]
+async fn media_state_is_relayed_with_from(pool: PgPool) {
+    let app = build_app(test_state(pool.clone()));
+    let loft_id = create_loft(&app, None).await;
+    let addr = start_server(pool).await;
+
+    let (mut alice_tx, mut alice_rx) = ws_join(addr, &loft_id, "alice").await;
+    let alice_roster = recv_until(&mut alice_rx, |m| m["type"] == "roster").await;
+    let alice_id = participant_id(&alice_roster, "alice").to_string();
+    let (_, mut bob_rx) = ws_join(addr, &loft_id, "bob").await;
+    recv_until(&mut bob_rx, |m| m["type"] == "roster").await;
+
+    alice_tx
+        .send(WsMessage::Text(
+            json!({"type": "media-state", "audio": false, "video": true}).to_string(),
+        ))
+        .await
+        .unwrap();
+
+    let media = recv_until(&mut bob_rx, |m| m["type"] == "media-state").await;
+    assert_eq!(media["from"]["id"], alice_id);
+    assert_eq!(media["audio"], false);
+    assert_eq!(media["video"], true);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn disconnect_broadcasts_leave(pool: PgPool) {
+    let app = build_app(test_state(pool.clone()));
+    let loft_id = create_loft(&app, None).await;
+    let addr = start_server(pool).await;
+
+    let (mut alice_tx, mut alice_rx) = ws_join(addr, &loft_id, "alice").await;
+    let alice_roster = recv_until(&mut alice_rx, |m| m["type"] == "roster").await;
+    let alice_id = participant_id(&alice_roster, "alice").to_string();
+    let (_, mut bob_rx) = ws_join(addr, &loft_id, "bob").await;
+    recv_until(&mut bob_rx, |m| m["type"] == "roster").await;
+
+    alice_tx.close().await.unwrap();
+
+    let leave = recv_until(&mut bob_rx, |m| m["type"] == "leave").await;
+    assert_eq!(leave["participant"]["id"], alice_id);
+    assert_eq!(leave["participant"]["name"], "alice");
 }

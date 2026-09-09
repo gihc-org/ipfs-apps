@@ -16,7 +16,13 @@ FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
+# CIS/ADR-0024: kør som non-root. Loft skriver ikke til filsystemet, så
+# read-only rootfs (k8s securityContext) og ingen uploads-sti er nødvendig.
+RUN useradd --uid 10001 --create-home appuser
+
 WORKDIR /app
 COPY --from=builder /app/target/release/chat .
+
+USER appuser
 
 CMD ["./chat"]
