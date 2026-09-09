@@ -307,6 +307,7 @@
         const meta = await res.json();
 
         state.loftId = id;
+        loftInput.value = id;
         state.loftName = meta.name;
         state.name = name;
         state.leaving = false;
@@ -546,7 +547,9 @@
     }
 
     async function autoStartMic() {
-      if (state.micStarted) return;
+      // E2e deaktiverer auto-mic (sessionStorage) for at undgå samtidige
+      // offers mellem to nye deltagere — og starter medier sekventielt.
+      if (state.micStarted || sessionStorage.getItem('loft.noAutoMic') === '1') return;
       state.micStarted = true;
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });

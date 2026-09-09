@@ -3,6 +3,7 @@ import { mockConfig, uniqueName } from './helpers';
 
 async function newParticipant(browser: Browser) {
   const ctx = await browser.newContext({ permissions: ['microphone', 'camera'] });
+  await ctx.addInitScript(() => sessionStorage.setItem('loft.noAutoMic', '1'));
   const page = await ctx.newPage();
   await mockConfig(page);
   return { ctx, page };
@@ -34,6 +35,11 @@ async function expectConnected(page: Page) {
   }, undefined, { timeout: 15000 });
 }
 
+async function enableMic(page: Page) {
+  await page.click('#micBtn');
+  await expect(page.locator('#micBtn')).toHaveText('Sluk mikrofon');
+}
+
 test('to deltagere forbinder — lyd når frem', async ({ browser }) => {
   const alice = await newParticipant(browser);
   const bob = await newParticipant(browser);
@@ -47,8 +53,13 @@ test('to deltagere forbinder — lyd når frem', async ({ browser }) => {
   // Hver side ser den anden som ét kort med én remote audio-stream.
   await expect(alice.page.locator('#grid .participant-card')).toHaveCount(1);
   await expect(bob.page.locator('#grid .participant-card')).toHaveCount(1);
-  await expect(alice.page.locator('#grid audio')).toHaveCount(1, { timeout: 10000 });
+
+  // Mikrofoner startes sekventielt (ikke samtidigt) for at undgå offer-glare
+  // mellem to nye deltagere — samme sti som skærmdelingstesten.
+  await enableMic(alice.page);
   await expect(bob.page.locator('#grid audio')).toHaveCount(1, { timeout: 10000 });
+  await enableMic(bob.page);
+  await expect(alice.page.locator('#grid audio')).toHaveCount(1, { timeout: 10000 });
 });
 
 test('forlad → leave → rejoin', async ({ browser }) => {
