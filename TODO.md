@@ -48,10 +48,11 @@ genbruges.
 
 ## M3 — Tests + CI
 
-- [ ] Playwright: tre kontekster i samme rum — connected, skærmdeling,
-      leave/rejoin, link åbnet fra frisk kontekst
-- [ ] Cargo-tests: loft-registry og WS-signalering
-- [ ] `.github/workflows/build.yml` bygger `loft` + `loft-web` (SHA-tags)
+- [x] Playwright: to kontekster pr. test — connected + lyd, skærmdeling
+      (fake stream), leave/rejoin og link fra frisk kontekst (4/4 grønne)
+- [x] Cargo-tests: loft-registry og WS-signalering (14/14 grønne)
+- [x] `.github/workflows/build.yml` bygger `loft` + `loft-web` (SHA-tags)
+- [x] E2e-jobb i GitHub Actions (postgres + backend + Chromium)
 - [ ] GHCR-pakker gøres public
 - [ ] E2e kører mod `loft.test.gihc.online` før prod-promote
 
