@@ -79,7 +79,9 @@ Serveren svarer med `roster` (fuld deltagerliste) og broadcastes `join`/
 `leave` til loftet:
 
 ```json
-{"type": "roster", "participants": [{"id": "…", "name": "Alice"}]}
+{"type": "roster",
+ "self": {"id": "…", "name": "Alice"},
+ "participants": [{"id": "…", "name": "Alice"}]}
 {"type": "join", "participant": {"id": "…", "name": "Alice"}}
 {"type": "leave", "participant": {"id": "…", "name": "Alice"}}
 ```
@@ -91,8 +93,9 @@ og sætter altid `from` selv — klienter kan ikke forfalske afsender:
 {"type": "signal", "to": "<deltager-id>", "signal": {"type": "offer", "sdp": "…"}}
 ```
 
-Andre beskedtyper (fx `media-state`) relayes til loftet med server-stemplet
-`from`. Én deltager pr. WebSocket-forbindelse; roster er kilden til sandheden,
+Andre beskedtyper (fx `media-state` med `audio`/`video`/`screen`-flag) relayes
+til loftet med server-stemplet `from`. Én deltager pr. WebSocket-forbindelse;
+`roster` er kilden til sandheden (inkl. `self` så klienten kender sit eget id),
 og klienter fjerner efterladte peers via `leave`.
 
 ## Lokal udvikling

@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Loft — link-rum</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    main { max-width: 960px; margin: 24px auto; padding: 0 16px; width: 100%; }
+    h1 { font-size: 20px; margin-bottom: 8px; }
+    #lobby p { color: var(--text-muted); margin-bottom: 20px; }
+    #lobby label { display: block; margin-bottom: 14px; font-size: 13px; color: var(--text-muted); }
+    #lobby label input { margin-top: 6px; }
+    #lobby .row { display: flex; gap: 10px; margin-top: 18px; }
+
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
+    .toolbar .spacer { flex: 1; }
+    button.active { background: var(--danger); }
+    button.danger { background: transparent; border: 1px solid var(--danger); color: var(--danger); }
+    button.danger:hover { background: var(--danger); color: #fff; }
+
+    #status { color: var(--text-muted); font-size: 13px; min-height: 18px; margin-bottom: 14px; }
+    #status.error { color: var(--danger); }
+
+    #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+    .participant-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      min-height: 150px;
+    }
+    .participant-card .media-area {
+      flex: 1;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 120px;
+      position: relative;
+    }
+    .participant-card .media-area video {
+      width: 100%;
+      height: 100%;
+      max-height: 260px;
+      object-fit: contain;
+      display: block;
+    }
+    .participant-card .media-area .empty-avatar { font-size: 34px; opacity: 0.35; }
+    .participant-card .participant-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      font-size: 13px;
+    }
+    .participant-card .badges { color: var(--text-muted); letter-spacing: 2px; }
+    .participant-card.connecting { border-color: #d29922; }
+
+    #selfWrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      max-width: 260px;
+    }
+    #selfWrap video { width: 120px; border-radius: 6px; background: #000; }
+    #selfWrap span { font-size: 13px; color: var(--text-muted); }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+    }
+    .modal .card { width: min(480px, 92vw); }
+    .modal .row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+    .modal input { margin-top: 10px; }
+    .modal button.secondary:first-child { margin-left: auto; }
+  </style>
+</head>
+<body>
+  <nav>
+    <span class="brand">Loft</span>
+    <span class="user" id="roomLabel"></span>
+  </nav>
+
+  <main>
+    <section id="lobby" class="card">
+      <h1>Opret eller deltag i et loft</h1>
+      <p>Lofts deles via link — ingen konto. Vælg et navn og hop ind.</p>
+      <label>Dit navn
+        <input id="nameInput" maxlength="50" placeholder="fx Alice" autocomplete="off">
+      </label>
+      <label>Link eller loft-id
+        <input id="loftInput" placeholder="indsæt link eller id">
+      </label>
+      <div class="row">
+        <button id="createBtn">Opret loft</button>
+        <button id="joinBtn" class="secondary">Deltag</button>
+      </div>
+      <div id="lobbyError" class="error"></div>
+    </section>
+
+    <section id="room" hidden>
+      <div class="toolbar">
+        <span class="user" id="youLabel"></span>
+        <span class="spacer"></span>
+        <button id="micBtn" class="secondary">Tænd mikrofon</button>
+        <button id="camBtn" class="secondary">Tænd kamera</button>
+        <button id="screenBtn" class="secondary">Del skærm</button>
+        <button id="inviteBtn" class="secondary">Inviter</button>
+        <button id="leaveBtn" class="danger">Forlad</button>
+      </div>
+
+      <div id="selfWrap" hidden>
+        <video id="selfVideo" autoplay muted playsinline></video>
+        <span>Dig</span>
+      </div>
+
+      <div id="status"></div>
+      <div id="grid"></div>
+    </section>
+  </main>
+
+  <div id="inviteModal" class="modal" hidden>
+    <div class="card">
+      <h1>Inviter til loftet</h1>
+      <p style="color:var(--text-muted);font-size:13px">Del linket over Matrix, XMPP, mail — eller bare kopiér det.</p>
+      <input id="inviteUrl" readonly>
+      <div class="row">
+        <button id="copyInvite" class="secondary">Kopiér link</button>
+        <button id="shareInvite" class="secondary">Del…</button>
+        <button id="closeInvite">Luk</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="rtc.js"></script>
+  <script>
+    'use strict';
+
+    const $ = (id) => document.getElementById(id);
+    const lobby = $('lobby'), room = $('room');
+    const nameInput = $('nameInput'), loftInput = $('loftInput'), lobbyError = $('lobbyError');
+    const statusEl = $('status'), roomLabel = $('roomLabel'), youLabel = $('youLabel');
+    const grid = $('grid');
+    const selfWrap = $('selfWrap'), selfVideo = $('selfVideo');
+    const micBtn = $('micBtn'), camBtn = $('camBtn'), screenBtn = $('screenBtn');
+    const inviteModal = $('inviteModal'), inviteUrlInput = $('inviteUrl');
+    const shareInviteBtn = $('shareInvite');
+
+    // Link kan åbne direkte på et loft — feltet præ-udfyldes.
+    const initialId = new URLSearchParams(location.search).get('id');
+    if (initialId) loftInput.value = initialId;
+
+    const state = {
+      ws: null,
+      rtc: null,
+      loftId: null,
+      loftName: '',
+      name: '',
+      selfId: null,
+      cells: new Map(),
+      micStream: null,
+      camStream: null,
+      screenStream: null,
+      micOn: false,
+      camOn: false,
+      screenOn: false,
+      micStarted: false,
+      leaving: false,
+      retryTimer: null,
+      retryDelay: 1000,
+    };
+
+    function apiBase() {
+      return (typeof API_URL !== 'undefined' && API_URL) ? API_URL : location.origin;
+    }
+
+    function wsBase() {
+      if (typeof WS_URL !== 'undefined' && WS_URL) return WS_URL;
+      const u = new URL(apiBase());
+      return (u.protocol === 'https:' ? 'wss://' : 'ws://') + u.host;
+    }
+
+    async function buildIceServers() {
+      const servers = [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun.cloudflare.com:3478' },
+      ];
+      if (typeof TURN_URL !== 'undefined' && TURN_URL &&
+          typeof TURN_SECRET !== 'undefined' && TURN_SECRET) {
+        const expires = Math.floor(Date.now() / 1000) + 86400;
+        const key = await crypto.subtle.importKey(
+          'raw', new TextEncoder().encode(TURN_SECRET), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign'],
+        );
+        const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(String(expires)));
+        const credential = btoa(String.fromCharCode(...new Uint8Array(sig)));
+        servers.push({ urls: TURN_URL, username: String(expires), credential });
+      }
+      return servers;
+    }
+    const iceServersPromise = buildIceServers();
+
+    function setStatus(text, isError = false) {
+      statusEl.textContent = text;
+      statusEl.classList.toggle('error', isError);
+    }
+
+    function extractLoftId(raw) {
+      const m = String(raw || '').match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+      return m ? m[0] : null;
+    }
+
+    function validName(raw) {
+      const name = String(raw || '').trim();
+      return name.length >= 1 && name.length <= 50 ? name : null;
+    }
+
+    // ── Lobby ───────────────────────────────────────────────────────────────
+
+    async function createLoft() {
+      const name = validName(nameInput.value);
+      if (!name) return showLobbyError('Skriv et navn (1–50 tegn)');
+      lobbyError.textContent = '';
+      try {
+        const res = await fetch(apiBase() + '/v1/lofts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.detail || `Fejl ${res.status}`);
+        enterLoft(body.id, name);
+      } catch (e) {
+        showLobbyError(e.message || 'Kunne ikke oprette loftet');
+      }
+    }
+
+    async function joinLoftFromInput() {
+      const name = validName(nameInput.value);
+      if (!name) return showLobbyError('Skriv et navn (1–50 tegn)');
+      const id = extractLoftId(loftInput.value);
+      if (!id) return showLobbyError('Indsæt et gyldigt link eller loft-id');
+      lobbyError.textContent = '';
+      await enterLoft(id, name);
+    }
+
+    function showLobbyError(msg) {
+      lobbyError.textContent = msg;
+    }
+
+    async function enterLoft(id, name) {
+      try {
+        const res = await fetch(apiBase() + '/v1/lofts/' + id);
+        if (res.status === 404) return showLobbyError('Loftet findes ikke — linket er måske udløbet');
+        if (!res.ok) return showLobbyError('Kunne ikke kontakte serveren');
+        const meta = await res.json();
+
+        state.loftId = id;
+        state.loftName = meta.name;
+        state.name = name;
+        state.leaving = false;
+
+        lobby.hidden = true;
+        room.hidden = false;
+        roomLabel.textContent = meta.name;
+        youLabel.textContent = `Du deltager som ${name}`;
+        disableControls(true);
+        history.replaceState({}, '', location.pathname + '?id=' + id);
+
+        connectWs();
+      } catch (e) {
+        showLobbyError(e.message || 'Kunne ikke kontakte serveren');
+      }
+    }
+
+    // ── WebSocket ──────────────────────────────────────────────────────────
+
+    function connectWs() {
+      state.retryDelay = 1000;
+      openSocket();
+    }
+
+    function openSocket() {
+      if (state.leaving) return;
+      setStatus('Forbinder…');
+      const ws = new WebSocket(wsBase() + '/v1/ws/' + state.loftId);
+      state.ws = ws;
+
+      ws.onopen = () => {
+        if (ws !== state.ws) return;
+        state.retryDelay = 1000;
+        setStatus('Forbundet — henter deltagere…');
+        ws.send(JSON.stringify({ type: 'join', name: state.name }));
+      };
+
+      ws.onmessage = (ev) => handleMessage(ev.data);
+
+      ws.onclose = () => {
+        if (state.leaving || ws !== state.ws) return;
+        cleanupSessionMedia();
+        setStatus(`Forbindelsen gik tabt — prøver igen om ${Math.round(state.retryDelay / 1000)} s`, true);
+        state.retryTimer = setTimeout(openSocket, state.retryDelay);
+        state.retryDelay = Math.min(30000, state.retryDelay * 2);
+      };
+
+      ws.onerror = () => {};
+    }
+
+    async function handleMessage(raw) {
+      let data;
+      try {
+        data = JSON.parse(raw);
+      } catch (_) {
+        return;
+      }
+      if (!data.type) return;
+
+      if (data.type === 'roster') {
+        await onRoster(data);
+      } else if (data.type === 'join') {
+        const p = data.participant;
+        if (!p || p.id === state.selfId || !state.rtc) return;
+        state.rtc.ensurePeer(p);
+        ensureCell(p);
+      } else if (data.type === 'leave') {
+        const p = data.participant;
+        if (!p) return;
+        if (state.rtc) state.rtc.removePeer(p.id);
+        removeCell(p.id);
+      } else if (data.type === 'signal') {
+        if (!state.rtc || data.to !== state.selfId || !data.from) return;
+        state.rtc.handleSignal(data.from.id, data.signal);
+      } else if (data.type === 'media-state') {
+        updateMediaBadges(data.from ? data.from.id : null, data);
+      }
+    }
+
+    async function onRoster(msg) {
+      state.selfId = msg.self.id;
+      state.name = msg.self.name;
+      youLabel.textContent = `Du deltager som ${state.name}`;
+
+      // Ny forbindelse = ny deltager-id — byg hub'en om fra roster.
+      if (state.rtc) state.rtc.closeAll();
+      clearCells();
+
+      const servers = await iceServersPromise;
+      state.rtc = new LoftRTC({
+        ws: state.ws,
+        selfId: state.selfId,
+        iceServers: servers,
+        onRemoteTrack: (peer, track) => onRemoteTrack(peer, track),
+        onPeerState: (peer, connState) => onPeerState(peer, connState),
+        log: (...args) => console.debug('[loft]', ...args),
+      });
+
+      // Efter reconnect har den nye hub ingen lokale streams — læg dem på igen.
+      attachExistingMedia();
+
+      for (const p of msg.participants || []) {
+        if (p.id === state.selfId) continue;
+        state.rtc.ensurePeer(p);
+        ensureCell(p);
+      }
+
+      disableControls(false);
+      setStatus(`Deltager i “${state.loftName}” — ${msg.participants.length} i loftet`);
+      autoStartMic();
+    }
+
+    function attachExistingMedia() {
+      if (!state.rtc) return;
+      if (state.micStream) state.rtc.addMedia('mic', state.micStream);
+      if (state.camStream) state.rtc.addMedia('cam', state.camStream);
+      if (state.screenStream) state.rtc.addMedia('screen', state.screenStream);
+    }
+
+    // ── Deltager-celler ────────────────────────────────────────────────────
+
+    function ensureCell(participant) {
+      let cell = state.cells.get(participant.id);
+      if (cell) {
+        cell.nameEl.textContent = participant.name || cell.nameEl.textContent;
+        return cell;
+      }
+
+      const el = document.createElement('div');
+      el.className = 'participant-card connecting';
+      el.id = 'peer-' + participant.id;
+      el.innerHTML = `
+        <div class="media-area">
+          <span class="empty-avatar">👤</span>
+        </div>
+        <div class="participant-meta">
+          <span class="peer-name"></span>
+          <span class="badges"></span>
+        </div>`;
+      grid.appendChild(el);
+
+      cell = {
+        id: participant.id,
+        el,
+        nameEl: el.querySelector('.peer-name'),
+        badgesEl: el.querySelector('.badges'),
+        media: el.querySelector('.media-area'),
+        audio: null,
+        videos: [],
+      };
+      cell.nameEl.textContent = participant.name || 'Deltager';
+      state.cells.set(participant.id, cell);
+      return cell;
+    }
+
+    function removeCell(id) {
+      const cell = state.cells.get(id);
+      if (!cell) return;
+      cell.el.remove();
+      if (cell.audio) cell.audio.remove();
+      state.cells.delete(id);
+    }
+
+    function clearCells() {
+      for (const id of [...state.cells.keys()]) removeCell(id);
+    }
+
+    function onRemoteTrack(peer, track) {
+      const cell = ensureCell(peer);
+      if (cell.media.querySelector('.empty-avatar')) {
+        cell.media.querySelector('.empty-avatar').remove();
+      }
+
+      if (track.kind === 'audio') {
+        if (!cell.audio) {
+          cell.audio = document.createElement('audio');
+          cell.audio.autoplay = true;
+          cell.media.appendChild(cell.audio);
+        }
+        cell.audio.srcObject = new MediaStream([track]);
+        cell.audio.play().catch(() => {});
+      } else {
+        const video = document.createElement('video');
+        video.autoplay = true;
+        video.muted = true; // lyden kommer via det separate audio-element
+        video.playsInline = true;
+        video.srcObject = new MediaStream([track]);
+        cell.media.appendChild(video);
+        cell.videos.push(video);
+      }
+    }
+
+    function onPeerState(peer, connState) {
+      const cell = state.cells.get(peer.id);
+      if (!cell) return;
+      cell.el.classList.toggle('connecting', connState !== 'connected');
+      if (connState === 'connected') {
+        setStatus(`Forbundet til ${peer.name} direkte (${state.cells.size} anden/andre i loftet)`);
+      }
+    }
+
+    function updateMediaBadges(participantId, media) {
+      const cell = participantId && state.cells.get(participantId);
+      if (!cell) return;
+      const parts = [];
+      parts.push(media.audio ? '🎙' : '🚫🎙');
+      if (media.video) parts.push('📹');
+      if (media.screen) parts.push('🖥');
+      cell.badgesEl.textContent = parts.join(' ');
+    }
+
+    // ── Medier ─────────────────────────────────────────────────────────────
+
+    function broadcastMediaState() {
+      if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+        state.ws.send(JSON.stringify({
+          type: 'media-state',
+          audio: state.micOn,
+          video: state.camOn,
+          screen: state.screenOn,
+        }));
+      }
+    }
+
+    function updateControlButtons() {
+      micBtn.textContent = state.micOn ? 'Sluk mikrofon' : 'Tænd mikrofon';
+      micBtn.classList.toggle('active', state.micOn);
+      camBtn.textContent = state.camOn ? 'Sluk kamera' : 'Tænd kamera';
+      camBtn.classList.toggle('active', state.camOn);
+      screenBtn.textContent = state.screenOn ? 'Stop skærmdeling' : 'Del skærm';
+      screenBtn.classList.toggle('active', state.screenOn);
+    }
+
+    async function autoStartMic() {
+      if (state.micStarted) return;
+      state.micStarted = true;
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        state.micStream = stream;
+        state.micOn = true;
+        if (state.rtc) state.rtc.addMedia('mic', stream);
+        updateControlButtons();
+        broadcastMediaState();
+        setStatus(`Lyd er tændt — du deltager som ${state.name}`);
+      } catch (_) {
+        setStatus('Kunne ikke starte mikrofonen automatisk — klik “Tænd mikrofon”', true);
+      }
+    }
+
+    async function toggleMic() {
+      const wantOn = !state.micOn;
+      if (wantOn && !state.micStream) {
+        try {
+          state.micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          if (state.rtc) state.rtc.addMedia('mic', state.micStream);
+        } catch (_) {
+          setStatus('Mikrofon blev ikke tilladt i browseren', true);
+          return;
+        }
+      }
+      if (state.micStream) {
+        state.micStream.getAudioTracks().forEach((t) => { t.enabled = wantOn; });
+      }
+      state.micOn = wantOn;
+      updateControlButtons();
+      broadcastMediaState();
+    }
+
+    async function toggleCam() {
+      const wantOn = !state.camOn;
+      if (wantOn) {
+        try {
+          state.camStream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 640 }, height: { ideal: 360 } },
+            audio: false,
+          });
+        } catch (_) {
+          setStatus('Kamera blev ikke tilladt i browseren', true);
+          return;
+        }
+        selfVideo.srcObject = state.camStream;
+        selfWrap.hidden = false;
+        state.camOn = true;
+        if (state.rtc) state.rtc.addMedia('cam', state.camStream);
+      } else {
+        if (state.rtc) state.rtc.removeMedia('cam');
+        selfVideo.srcObject = null;
+        selfWrap.hidden = true;
+        state.camStream = null;
+        state.camOn = false;
+      }
+      updateControlButtons();
+      broadcastMediaState();
+    }
+
+    async function toggleScreen() {
+      if (state.screenOn) {
+        stopScreen(true);
+        return;
+      }
+      try {
+        state.screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      } catch (_) {
+        setStatus('Skærmdeling blev ikke tilladt i browseren', true);
+        return;
+      }
+      const track = state.screenStream.getVideoTracks()[0];
+      if (track) track.addEventListener('ended', () => stopScreen(false));
+      state.screenOn = true;
+      if (state.rtc) state.rtc.addMedia('screen', state.screenStream);
+      updateControlButtons();
+      broadcastMediaState();
+    }
+
+    function stopScreen(notify) {
+      if (!state.screenStream) return;
+      if (state.rtc) state.rtc.removeMedia('screen');
+      state.screenStream = null;
+      state.screenOn = false;
+      if (notify) {
+        updateControlButtons();
+        broadcastMediaState();
+      }
+    }
+
+    function cleanupSessionMedia() {
+      clearCells();
+      if (state.rtc) {
+        state.rtc.closeAll();
+        state.rtc = null;
+      }
+      state.selfId = null;
+    }
+
+    function disableControls(disabled) {
+      for (const btn of [micBtn, camBtn, screenBtn, inviteBtn]) {
+        btn.disabled = disabled;
+      }
+    }
+
+    // ── Invite ─────────────────────────────────────────────────────────────
+
+    function showInvite() {
+      inviteUrlInput.value = `${location.origin}${location.pathname}?id=${state.loftId}`;
+      shareInviteBtn.hidden = !navigator.share;
+      inviteModal.hidden = false;
+      inviteUrlInput.focus();
+      inviteUrlInput.select();
+    }
+
+    async function copyInvite() {
+      const url = inviteUrlInput.value;
+      try {
+        await navigator.clipboard.writeText(url);
+        setStatus('Link kopieret — del det i Matrix, XMPP eller mail');
+      } catch (_) {
+        inviteUrlInput.select();
+        document.execCommand('copy');
+      }
+      inviteModal.hidden = true;
+    }
+
+    async function shareInvite() {
+      try {
+        await navigator.share({ title: state.loftName || 'Loft', url: inviteUrlInput.value });
+        inviteModal.hidden = true;
+      } catch (_) {
+        /* brugeren lukkede share-arket */
+      }
+    }
+
+    // ── Forlad ─────────────────────────────────────────────────────────────
+
+    function leaveLoft() {
+      state.leaving = true;
+      clearTimeout(state.retryTimer);
+      if (state.ws) state.ws.close();
+      state.ws = null;
+      stopScreen(false);
+      if (state.rtc) state.rtc.removeMedia('mic', false);
+      if (state.rtc) state.rtc.removeMedia('cam', false);
+      cleanupSessionMedia();
+
+      if (state.micStream) state.micStream.getTracks().forEach((t) => t.stop());
+      if (state.camStream) state.camStream.getTracks().forEach((t) => t.stop());
+      state.micStream = state.camStream = null;
+      state.micOn = state.camOn = state.screenOn = state.micStarted = false;
+      state.loftId = state.loftName = state.name = null;
+      updateControlButtons();
+
+      room.hidden = true;
+      lobby.hidden = false;
+      statusEl.textContent = '';
+      history.replaceState({}, '', location.pathname);
+    }
+
+    // ── Events ─────────────────────────────────────────────────────────────
+
+    $('createBtn').addEventListener('click', createLoft);
+    $('joinBtn').addEventListener('click', joinLoftFromInput);
+    micBtn.addEventListener('click', toggleMic);
+    camBtn.addEventListener('click', toggleCam);
+    screenBtn.addEventListener('click', toggleScreen);
+    $('inviteBtn').addEventListener('click', showInvite);
+    $('leaveBtn').addEventListener('click', leaveLoft);
+    $('copyInvite').addEventListener('click', copyInvite);
+    shareInviteBtn.addEventListener('click', shareInvite);
+    $('closeInvite').addEventListener('click', () => { inviteModal.hidden = true; });
+
+    nameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') (initialId ? joinLoftFromInput : createLoft)();
+    });
+    loftInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') joinLoftFromInput();
+    });
+
+    if (initialId) nameInput.focus();
+  </script>
+</body>
+</html>

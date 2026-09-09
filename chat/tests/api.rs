@@ -238,6 +238,8 @@ async fn join_receives_roster_and_broadcasts(pool: PgPool) {
     let alice_roster = recv_until(&mut alice_rx, |m| m["type"] == "roster").await;
     assert_eq!(alice_roster["participants"].as_array().unwrap().len(), 1);
     let alice_id = participant_id(&alice_roster, "alice").to_string();
+    assert_eq!(alice_roster["self"]["id"], alice_id);
+    assert_eq!(alice_roster["self"]["name"], "alice");
     let alice_join = recv_until(&mut alice_rx, |m| {
         m["type"] == "join" && m["participant"]["name"] == "alice"
     })

@@ -155,8 +155,12 @@ async fn handle_socket(socket: WebSocket, state: AppState, loft_id: Uuid) {
                                 let roster = state::roster(&state.loft_registry, loft_id).await;
                                 let _ = sender
                                     .send(Message::Text(
-                                        json!({"type": "roster", "participants": roster})
-                                            .to_string(),
+                                        json!({
+                                            "type": "roster",
+                                            "self": participant,
+                                            "participants": roster
+                                        })
+                                        .to_string(),
                                     ))
                                     .await;
                                 let _ = channel.send(
