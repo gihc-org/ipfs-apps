@@ -161,6 +161,11 @@ forbinder direkte og rører aldrig coturn). Begge peers tvinges til
 typen `relay`, eller hvis data ikke kommer begge veje. Den skal køres fra en
 maskine med DNS- og UDP-adgang — i CI springes den over.
 
+`tests/turn.spec.ts` har desuden en test der bruger den **deployede sides egen**
+`config.js` (via `loft.html`s `buildIceServers()`) og kræver en relay-kandidat.
+De øvrige loft-tests stubber `config.js` med tom TURN, så uden den ville en
+forkert `TURN_URL` i `configmap.yaml` først vise sig for en rigtig bruger.
+
 ## 7. Rollback
 
 ```bash

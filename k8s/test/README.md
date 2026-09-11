@@ -42,6 +42,11 @@ kubectl apply -f .
   `config.js` her peger på den, og `TURN_SECRET` rendres fra platformens
   `pass turn/static-auth-secret` (`~/projects/infra/scripts/turn-config.sh
   --config-js`) — hold de to kopier i sync ved rotation.
+- **Test af koblingen:** `e2e/tests/turn.spec.ts` har to tests — én med
+  credentials fra miljøet (relay-only ICE mellem to klienter) og én der bruger
+  den deployede sides egen `config.js` og kræver en relay-kandidat. Den sidste
+  fanger en forkert `TURN_URL` i `configmap.yaml`, som de øvrige tests ikke ser,
+  fordi de stubber `config.js`.
 - Hærdningen, kvoterne (`--user-quota=8` pr. credential ≈ 8 deltagere i et mesh,
   `--total-quota` = 40 i alt) og `--denied-peer-ip`-filtrene er flyttet med til
   platformen og tunes der, ikke her.

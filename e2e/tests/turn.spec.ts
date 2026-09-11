@@ -163,3 +163,49 @@ test('TURN relayer media mellem to klienter (relay-only ICE)', async ({ browser 
   await aliceContext.close();
   await bobContext.close();
 });
+
+// Testen ovenfor bruger credentials fra miljøvariabler. Denne bruger i stedet
+// den DEPLOYEDE sides egen config.js — altså hele kæden config.js →
+// loft.html's buildIceServers() → RTCPeerConnection. Den kæde er ellers
+// udækket: de øvrige loft-tests stubber config.js med tom TURN, så en forkert
+// TURN_URL (fx den gamle loft.test-host) ville først vise sig for en bruger.
+test('den deployede sides egen TURN-config giver en relay-kandidat', async ({ page }) => {
+  test.skip(!process.env.BASE_URL, 'kræver et deployet miljø (BASE_URL)');
+
+  await page.goto('/');
+
+  const iceServers: { urls: string; username?: string; credential?: string }[] = await page.evaluate(
+    () => (window as any).buildIceServers(),
+  );
+  const turn = iceServers.find((server) => server.urls.startsWith('turn:'));
+  expect(turn, `ingen TURN-server i sidens config.js: ${JSON.stringify(iceServers)}`).toBeTruthy();
+  expect(turn!.username, 'TURN uden brugernavn — er TURN_SECRET sat i config.js?').toBeTruthy();
+  expect(turn!.credential, 'TURN uden credential — er TURN_SECRET sat i config.js?').toBeTruthy();
+
+  const candidates: string[] = await page.evaluate(async () => {
+    const servers = await (window as any).buildIceServers();
+    const pc = new RTCPeerConnection({ iceServers: servers, iceTransportPolicy: 'relay' });
+    const types: string[] = [];
+    pc.addEventListener('icecandidate', (event) => {
+      if (event.candidate) types.push(event.candidate.type ?? 'ukendt');
+    });
+    pc.createDataChannel('side-config-probe');
+    await pc.setLocalDescription(await pc.createOffer());
+    await new Promise<void>((resolve) => {
+      if (pc.iceGatheringState === 'complete') return resolve();
+      const timer = setTimeout(resolve, 15000);
+      pc.addEventListener('icegatheringstatechange', () => {
+        if (pc.iceGatheringState === 'complete') {
+          clearTimeout(timer);
+          resolve();
+        }
+      });
+    });
+    pc.close();
+    return types;
+  });
+
+  const relay = candidates.filter((type) => type === 'relay');
+  expect(relay.length, `ingen relay-kandidat fra ${turn!.urls} (kandidater: ${candidates.join(',') || 'ingen'})`).toBeGreaterThan(0);
+  console.log(`  side-config ok: ${turn!.urls} → ${relay.length} relay-kandidat(er)`);
+});
