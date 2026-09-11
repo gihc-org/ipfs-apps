@@ -1,8 +1,9 @@
 # k8s/prod — Loft produktionsmiljø
 
 Spejling af [k8s/test/](../test/README.md) for `loft.gihc.online` i namespace
-`loft-prod`. **Ikke deployet endnu** — filerne er forberedt i M4 og tages i brug
-i M5, når testmiljøet har været grønt i en periode.
+`loft-prod`. **Ikke deployet endnu** — manifesterne er forberedt og klar, og
+tages i brug når testmiljøet har været accepteret i hånden. Trin-for-trin står i
+[runbooks/loft-deploy.md](../../runbooks/loft-deploy.md) under "Prod-deploy".
 
 Forskelle fra test:
 
@@ -12,19 +13,21 @@ Forskelle fra test:
 | Namespace | `loft-test` | `loft-prod` |
 | TLS-secret | `loft-test-gihc-online-tls` | `loft-gihc-online-tls` |
 | coturn realm | `loft.test.gihc.online` | `loft.gihc.online` |
-| TURN-secret | test-placeholder | **skal sættes** (`change-me-prod-turn-secret`) |
+| TURN-secret | test-placeholder | eget secret (sat i `configmap.yaml`) |
+| Image-tag | `:latest` (Always) | pinnet SHA-tag (IfNotPresent) |
 
 ## Før deploy
 
-1. Erstat TURN-placeholderne i `configmap.yaml` (`config.js` **og** `turn-secret`
-   skal være identiske) med et rigtigt secret fra `pass`, fx
-   `pass insert loft/prod-turn-secret`.
-2. Pint image-tags: erstat `:latest` i `deployment-api.yaml` og
-   `deployment-web.yaml` med det SHA-tag der er verificeret i test.
-3. Opret DNS-recorden for `loft.gihc.online` (samme mønster som
-   `scripts/create-dns-record.sh`, men med `RECORD_NAME="loft"`).
-4. Opret `loft-secrets` i `loft-prod` med en **egen** postgres-adgangskode —
-   prod må ikke dele database-credentials med test.
+1. Opret DNS-recorden: `bash scripts/create-dns-record.sh loft` (idempotent).
+2. Opret `loft-secrets` i `loft-prod` med en **egen** postgres-adgangskode
+   (`pass insert loft/prod-postgres-password`) — prod må ikke dele
+   database-credentials med test.
+3. Tjek at image-SHA'en i `deployment-api.yaml` og `deployment-web.yaml` er det
+   tag CI har bygget på `trunk` (`curl -s
+   https://ghcr.io/v2/gihc-org/loft/tags/list` med et anonymt token).
+4. `configmap.yaml` har allerede realm `loft.gihc.online` og et rigtigt
+   TURN-secret; rotér det kun hvis det er kompromitteret (husk begge felter i
+   filen).
 
 ## Apply
 

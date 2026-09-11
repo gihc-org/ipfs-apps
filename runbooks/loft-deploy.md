@@ -200,3 +200,62 @@ gamle chat-records.
   (`turn:65.109.233.92:3478?transport=udp`).
 - **Ingress-logs**: loft-id'et er adgangsnøglen, så del aldrig fulde URL'er
   med `id=`-parameteren i fejlrapporter.
+
+## Prod-deploy (`loft.gihc.online`)
+
+Samme kæde som test (trin 0–8), men i namespace `loft-prod` og med egne
+secrets. Manifesterne ligger klar i [k8s/prod/](../k8s/prod/README.md) og
+deployes **først efter** at testmiljøet er accepteret i hånden.
+
+Forskelle fra test:
+
+```bash
+# 1. DNS — samme script, andet record-navn
+bash scripts/create-dns-record.sh loft          # → loft.gihc.online
+
+# 2. Eget postgres-password (må ikke deles med test)
+PROD_PG_PASS="$(openssl rand -base64 24)"
+printf '%s' "$PROD_PG_PASS" | pass insert -m loft/prod-postgres-password
+kubectl apply -f k8s/prod/namespace.yaml
+kubectl -n loft-prod create secret generic loft-secrets \
+  --from-literal=postgres-password="$PROD_PG_PASS" \
+  --from-literal="database-url=postgres://loft:${PROD_PG_PASS}@postgres:5432/loftdb" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# 3. Apply (configmap'en har prod-realm og et rigtigt TURN-secret)
+kubectl apply -f k8s/prod/configmap.yaml
+kubectl apply -f k8s/prod/
+
+# 4. Cert: staging → verificér → prod-issuer (som trin 5, men i loft-prod)
+kubectl -n loft-prod annotate ingress loft --overwrite \
+  cert-manager.io/cluster-issuer=letsencrypt-prod
+```
+
+**Images er pinnet på SHA-tag** i `k8s/prod/deployment-api.yaml` og
+`deployment-web.yaml` (ikke `:latest`), så prod ikke skifter under fødderne og
+rollback er `kubectl set image` til det forrige tag. Ved promote: erstat SHA'en
+i begge filer med det tag CI har bygget på `trunk`, og `kubectl apply -f
+k8s/prod/` (eller `kubectl -n loft-prod set image`).
+
+Verifikation:
+
+```bash
+bash scripts/smoke-test.sh https://loft.gihc.online --namespace loft-prod
+cd e2e && npm run test:beta      # sætter BASE_URL/TEST_API_URL til prod
+# TURN-relay mod prod (samme test som test, med prod-secret):
+cd e2e && TURN_URL='turn:loft.gihc.online:3478?transport=udp' \
+  TURN_SECRET="$(kubectl -n loft-prod get cm loft-config -o jsonpath='{.data.turn-secret}')" \
+  BASE_URL=https://loft.gihc.online npx playwright test tests/turn.spec.ts
+```
+
+**TURN-secretet** ligger i `k8s/prod/configmap.yaml` (både `config.js` og
+`turn-secret`) og er — som i test — reelt offentligt. Roterer du det, skal begge
+felter opdateres og coturn-genstartes:
+
+```bash
+kubectl apply -f k8s/prod/configmap.yaml
+kubectl -n loft-prod rollout restart deploy/loft-coturn deploy/loft-web
+```
+
+Rydder man testmiljøet senere, er det `kubectl delete namespace loft-test` plus
+DNS-recorden og `pass rm loft/postgres-password` — se trin 8.

@@ -13,8 +13,9 @@ genbruges.
 
 Kopér blokken herunder som første besked til agenten:
 
-> Fortsæt arbejdet på **Loft** i branchen `feat/loft-k3s-refocus`
-> (M0–M3 færdige; M4 undervejs — smoke-test og `k8s/prod/`-manifester er klar).
+> Fortsæt arbejdet på **Loft**. Branchen `feat/loft-k3s-refocus` er merget til
+> `trunk` (M0–M4 færdige): testmiljøet kører på `loft.test.gihc.online` med
+> hærdet coturn, smoke-test og e2e (inkl. TURN-relay) grønt.
 >
 > Læs først `README.md`, `MIGRATION.md`, `TODO.md` og ADR-drafts
 > `0027-loft-link-rooms.md` + `0028-loft-group-mesh.md`. AGENTS.md's
@@ -30,12 +31,16 @@ Kopér blokken herunder som første besked til agenten:
 >   negotiation). `index.html` redirecter til loft.html.
 > - k8s: `k8s/test/` (namespace `loft-test`); GitHub Actions bygger
 >   `ghcr.io/gihc-org/loft`(+web) og kører e2e.
+> - coturn kører hærdet (non-root, read-only rootfs, no_new_privs, kun
+>   `NET_BIND_SERVICE` i bounding-settet) og med `--denied-peer-ip` + kvoter.
 >
-> Næste opgave (M4): deploy af test-miljø — A-record via
-> `scripts/create-dns-record.sh`, secret `loft-secrets`, firewall i
-> `~/projects/infra/tofu` (3478 + 49152–49200), apply `k8s/test/`,
-> cert staging → prod. Følg `runbooks/loft-deploy.md`. Dele af M4 kræver
-> adgang til k3s/pass/infra-repoet — spørg brugeren før trin uden for repoet.
+> Næste opgave: manuel accepttest af testmiljøet med rigtige enheder, og
+> derefter prod-deploy af `loft.gihc.online` efter `runbooks/loft-deploy.md`
+> (DNS via `scripts/create-dns-record.sh loft`, `pass insert
+> loft/prod-postgres-password`, TURN-secret i `k8s/prod/configmap.yaml`, cert
+> staging → prod). TURN-portene står allerede åbne i `platform-firewall`.
+> Adgang til k3s/pass/infra-repoet kræver brugerens godkendelse — spørg før
+> trin uden for repoet.
 >
 > Kommandoer:
 > - Unit: `cd chat && cargo test --lib`
@@ -89,8 +94,10 @@ Kopér blokken herunder som første besked til agenten:
 - [x] Cargo-tests: loft-registry og WS-signalering (14/14 grønne)
 - [x] `.github/workflows/build.yml` bygger `loft` + `loft-web` (SHA-tags)
 - [x] E2e-jobb i GitHub Actions (postgres + backend + Chromium)
-- [ ] GHCR-pakker gøres public
-- [ ] E2e kører mod `loft.test.gihc.online` før prod-promote
+- [x] GHCR-pakker public — pakker pushet af Actions med `GITHUB_TOKEN` arver
+      repoets synlighed, så `loft`/`loft-web` kan hentes anonymt
+- [x] E2e kører mod `loft.test.gihc.online` før prod-promote (5/5: fire
+      loft-tests + TURN-relay, 2026-09-11)
 
 ## M4 — k3s deploy (test-miljø)
 

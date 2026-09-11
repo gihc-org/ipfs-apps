@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Opretter A-record for loft.test.gihc.online hos Simply.com, så Loft kan nås
-# på k3s-clusteret. Idempotent — springer over hvis recorden findes.
+# Opretter en A-record hos Simply.com for et Loft-miljø, så det kan nås på
+# k3s-clusteret. Idempotent — springer over hvis recorden findes.
+#
+# Brug:
+#   ./scripts/create-dns-record.sh          # loft.test.gihc.online (test)
+#   ./scripts/create-dns-record.sh loft     # loft.gihc.online (prod)
 #
 # Credentials hentes fra `pass` (samme mønster som capture):
 #   pass insert simply/account
 #   pass insert simply/api-key
 
 DOMAIN="gihc.online"
-RECORD_NAME="loft.test"
+RECORD_NAME="${1:-loft.test}"
 VPS_IP="65.109.233.92"
 
 SIMPLY_ACCOUNT="$(pass simply/account)"
