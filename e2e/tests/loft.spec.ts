@@ -2,7 +2,11 @@ import { expect, test, Browser, Page } from '@playwright/test';
 import { mockConfig, uniqueName } from './helpers';
 
 async function newParticipant(browser: Browser, noAutoMic = false) {
-  const ctx = await browser.newContext({ permissions: ['microphone', 'camera'] });
+  // Firefox understøtter ikke Playwrights permission-grant; der auto-grantes i
+  // stedet via firefoxUserPrefs i playwright.config.ts.
+  const permissions =
+    browser.browserType().name() === 'firefox' ? {} : { permissions: ['microphone', 'camera'] };
+  const ctx = await browser.newContext(permissions);
   if (noAutoMic) {
     await ctx.addInitScript(() => sessionStorage.setItem('loft.noAutoMic', '1'));
   }

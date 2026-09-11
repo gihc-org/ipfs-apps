@@ -181,6 +181,25 @@ er gennemført — platform-siden står i `~/projects/infra`
 - [ ] `trivy image` mod byggede images + `cargo audit` i CI
 - [ ] OWASP ZAP passiv baseline mod `loft.test.gihc.online`
 
+## Lyd-routing på telefoner (fundet 2026-09-12)
+
+Manuel accepttest på Android + Bluetooth-earplugs: podcast og anden medieafspilning
+kører i earpluggene (A2DP), men Lofts WebRTC-lyd kom ud af telefonens højttaler.
+Headsettet har både "telefonopkald" (HFP) og "medielyd" (A2DP) slået til, så det
+er ikke et A2DP-only headset — det er browserens/Android's valg af
+kommunikationsenhed for WebRTC.
+
+- [ ] Afklar om det er Firefox-specifikt: kør Google Meet i **Firefox** på samme
+      telefon med samme earplugs (Meet er ren WebRTC). Landet lyden i earpluggene
+      der, er der noget i vores frontend; gør den ikke, er det Firefox/Android.
+- [ ] Afprøv om `HTMLMediaElement.setSinkId()` kan tvinge fjern-lyden over på
+      earpluggene. Desktop-Firefox 148 har API'et (verificeret 2026-09-12),
+      `AudioContext.setSinkId` findes kun i Chromium — og på Firefox til Android
+      er det uafklaret, så det skal testes på telefonen. Kræver at
+      `enumerateDevices()` overhovedet viser `audiooutput`-enheder på Android.
+- [ ] Hvis `setSinkId` ikke er en vej: undersøg om Firefox skifter til SCO når
+      mikrofonen er aktiv (pauser earpluggene deres musik, når man joiner?).
+
 ## GDPR (forenklet)
 
 - [x] Ingen konti, emails eller beskedhistorik i MVP — minimal persondata

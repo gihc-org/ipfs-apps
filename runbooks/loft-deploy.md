@@ -146,6 +146,9 @@ bash scripts/smoke-test.sh https://loft.test.gihc.online --namespace loft-test
 # Playwright mod det deployede miljø (rigtige MediaStreams, falske enheder)
 cd e2e && npm run test:test
 
+# Samme suite i Firefox (kræver `npx playwright install firefox` én gang)
+cd e2e && npm run test:test:firefox
+
 # TURN-relay (relay-only ICE, to browser-kontekster gennem platformens coturn)
 cd e2e && TURN_URL="$(~/projects/infra/scripts/turn-config.sh --url)" \
   TURN_SECRET="$(pass turn/static-auth-secret)" \

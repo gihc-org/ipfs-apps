@@ -41,8 +41,32 @@ async function setupPeer(page: Page, iceServer: { urls: string; username: string
     const pc = new RTCPeerConnection({ iceServers: [ice], iceTransportPolicy: 'relay' });
     state.pc = pc;
     pc.addEventListener('icecandidate', (event) => {
-      if (event.candidate) state.candidates.push(event.candidate.type ?? 'ukendt');
+      // Firefox kan sende en afsluttende, tom kandidat (ingen candidate-streng/
+      // adresse). Den er ikke en rigtig kandidat og tælles ikke med.
+      const candidate = event.candidate;
+      if (!candidate || !candidate.candidate) return;
+      state.candidates.push(candidate.type ?? 'ukendt');
     });
+    // Den valgte kandidatpair er det egentlige bevis: den siger hvilken vej
+    // mediet faktisk gik, uafhængigt af hvordan browseren rapporterer
+    // kandidat-events (Firefox og Chromium gør det forskelligt).
+    state.selectedPair = async () => {
+      const stats = await pc.getStats();
+      let pair: any = null;
+      stats.forEach((report: any) => {
+        if (report.type === 'candidate-pair' && report.state === 'succeeded' &&
+            (report.nominated || report.selected)) {
+          pair = report;
+        }
+      });
+      if (!pair) return null;
+      const local = stats.get(pair.localCandidateId);
+      const remote = stats.get(pair.remoteCandidateId);
+      return {
+        localType: local?.candidateType ?? local?.type ?? null,
+        remoteType: remote?.candidateType ?? remote?.type ?? null,
+      };
+    };
     pc.addEventListener('icecandidateerror', (event: any) => {
       state.errors.push(`${event.errorCode}: ${event.errorText}`);
     });
@@ -156,8 +180,26 @@ test('TURN relayer media mellem to klienter (relay-only ICE)', async ({ browser 
     expect(state.candidates.length).toBeGreaterThan(0);
     expect(state.candidates.every((type) => type === 'relay')).toBe(true);
   }
+
+  // Og beviset på at mediet faktisk gik gennem relayeren: den valgte
+  // kandidatpair skal være af typen relay i begge ender.
+  const pairs: ({ localType: string | null; remoteType: string | null } | null)[] = [];
+  for (const page of [alice, bob]) {
+    await page.waitForFunction(
+      () => (window as any).__turn.pc.connectionState === 'connected',
+      null,
+      { timeout: 20000 },
+    );
+    pairs.push(await page.evaluate(() => (window as any).__turn.selectedPair()));
+  }
+  for (const pair of pairs) {
+    expect(pair, 'fandt ingen valgt kandidatpair').not.toBeNull();
+    expect(pair!.localType, `valgt lokal kandidat var ${pair!.localType}`).toBe('relay');
+  }
+
   console.log(
-    `  relay ok: alice=${aliceState.candidates.join(',')} bob=${bobState.candidates.join(',')}`,
+    `  relay ok: alice=${aliceState.candidates.join(',')} bob=${bobState.candidates.join(',')}` +
+    ` (valgt pair: ${pairs.map((p) => `${p!.localType}/${p!.remoteType}`).join(', ')})`,
   );
 
   await aliceContext.close();

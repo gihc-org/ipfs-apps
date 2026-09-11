@@ -156,6 +156,10 @@ cd chat && DATABASE_URL=postgres://postgres:postgres@localhost:5432 cargo test
 # E2e (kræver kørende backend)
 cd e2e && TEST_API_URL=http://localhost:8081 npx playwright test
 
+# E2e i Firefox (kræver `npx playwright install firefox` én gang; CI kører kun
+# Chromium). Brugeren kører Firefox på alle enheder, så den holdes ved lige.
+cd e2e && npm run test:test:firefox
+
 # Smoke-test af et deployet miljø (REST + WebSocket + DB-rækken væk)
 ./scripts/smoke-test.sh https://loft.test.gihc.online --namespace loft-test
 
