@@ -56,8 +56,11 @@ spec:
             - "--denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"
             - "--denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff"
             # 2) Kvoter: 2 Mbit/s pr. session, 50 Mbit/s i alt, 8 samtidige
-            #    allocationer pr. credential og 40 i alt. Relay-portintervallet
-            #    (49 porte) er i praksis den strammeste grænse.
+            #    allocationer pr. credential og 40 i alt.
+            #    VIGTIGT ved tuning: hver peer-forbindelse i meshen bruger én
+            #    allocation, så et loft med mere end ~8 deltagere rammer
+            #    --user-quota først. Hæv den (og --total-quota) hvis loftene
+            #    vokser; relay-portintervallet (49 porte) er den anden grænse.
             - "--max-bps=2000000"
             - "--bps-capacity=50000000"
             - "--user-quota=8"

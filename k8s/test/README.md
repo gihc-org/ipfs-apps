@@ -50,6 +50,11 @@ kubectl apply -f .
   (`--max-bps`, `--bps-capacity`, `--user-quota`, `--total-quota`,
   `--stale-nonce`). Langsigtet løsning: udsted credentials i API'et med kort
   TTL, så hemmeligheden ikke ligger i frontend-koden.
+- **Kvoterne skal tunes efter mesh-størrelsen:** hver peer-forbindelse i
+  meshen bruger én allocation, så `--user-quota=8` (pr. credential) rækker til
+  ca. 8 deltagere. Vokser loftene, er `--user-quota` og `--total-quota` de
+  første tal der skal hæves; relay-portintervallet (49152–49200 = 49 porte) er
+  den næste grænse.
 - `-n` er udeladt i coturns args: imagets entrypoint kører `eval "echo $i"` pr.
   argument, og `echo -n` bliver til en tom streng, så coturn logger
   "Unknown argument:" ved hver start. Imaget har ingen `turnserver.conf`.

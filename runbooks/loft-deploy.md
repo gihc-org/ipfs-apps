@@ -60,7 +60,10 @@ bag NAT — det er først verificerbart med e2e fra to forskellige netværk.
 Misbrugsbeskyttelsen sidder i coturns args: `--denied-peer-ip` for
 RFC1918/loopback/link-local/CGNAT og kvoter (`--max-bps`, `--bps-capacity`,
 `--user-quota`, `--total-quota`). Baggrunden er at `TURN_SECRET` er offentlig
-(den ligger i `config.js`), så alle kan udstede credentials.
+(den ligger i `config.js`), så alle kan udstede credentials. Kvoterne skal
+tunes efter mesh-størrelsen: hver peer-forbindelse bruger én allocation, så
+`--user-quota=8` rækker til ca. 8 deltagere — hæv den (og `--total-quota`) hvis
+loftene vokser.
 
 ## 3. Secret `loft-secrets`
 

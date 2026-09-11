@@ -23,7 +23,6 @@ spec:
         - name: coturn
           image: coturn/coturn:4.6
           args:
-            - "-n"
             - "--log-file=stdout"
             - "--use-auth-secret"
             - "--static-auth-secret=$(TURN_SECRET)"
@@ -34,6 +33,39 @@ spec:
             - "--external-ip=$(EXTERNAL_IP)"
             - "--min-port=49152"
             - "--max-port=49200"
+            # `-n` (ignorér config-fil) er bevidst udeladt: imagets entrypoint
+            # kører `eval "echo $i"` på hvert argument, og `echo -n` bliver til
+            # en tom streng — coturn får derfor et tomt argument og logger
+            # "Unknown argument:" ved hver start. Imaget har ingen
+            # turnserver.conf, så der er intet at læse.
+            #
+            # Misbrugsbeskyttelse: TURN_SECRET ligger i frontendens config.js og
+            # er dermed offentlig — enhver kan udstede HMAC-credentials. Disse
+            # grænser bestemmer, hvad en sådan credential kan bruges til.
+            # 1) Relayer må ikke kunne nå private/interne adresser (RFC1918,
+            #    loopback, link-local, CGNAT og IPv6-ækvivalenter), så TURN ikke
+            #    kan bruges som springbræt ind i nodens netværk.
+            - "--denied-peer-ip=0.0.0.0-0.255.255.255"
+            - "--denied-peer-ip=10.0.0.0-10.255.255.255"
+            - "--denied-peer-ip=100.64.0.0-100.127.255.255"
+            - "--denied-peer-ip=127.0.0.0-127.255.255.255"
+            - "--denied-peer-ip=169.254.0.0-169.254.255.255"
+            - "--denied-peer-ip=172.16.0.0-172.31.255.255"
+            - "--denied-peer-ip=192.168.0.0-192.168.255.255"
+            - "--denied-peer-ip=::1"
+            - "--denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"
+            - "--denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff"
+            # 2) Kvoter: 2 Mbit/s pr. session, 50 Mbit/s i alt, 8 samtidige
+            #    allocationer pr. credential og 40 i alt.
+            #    VIGTIGT ved tuning: hver peer-forbindelse i meshen bruger én
+            #    allocation, så et loft med mere end ~8 deltagere rammer
+            #    --user-quota først. Hæv den (og --total-quota) hvis loftene
+            #    vokser; relay-portintervallet (49 porte) er den anden grænse.
+            - "--max-bps=2000000"
+            - "--bps-capacity=50000000"
+            - "--user-quota=8"
+            - "--total-quota=40"
+            - "--stale-nonce=600"
           env:
             - name: TURN_SECRET
               valueFrom:
@@ -62,10 +94,23 @@ spec:
               port: 3478
             initialDelaySeconds: 10
             periodSeconds: 30
+          # Hærdning (verificeret på loft-test 2026-09-11): coturn kører uden
+          # root, uden rettigheder den ikke bruger, og med read-only rootfs.
+          #
+          # Fælden: /usr/bin/turnserver bærer file-capabilities. Tømmer man
+          # bounding-settet helt (`drop: ["ALL"]` uden `add`), nægter kernelen
+          # `execve` af binæren med "Operation not permitted" — pod'en crasher i
+          # en loop. NET_BIND_SERVICE skal derfor stå i bounding-settet for at
+          # exec lykkes, men med `no_new_privs` bliver den ikke givet videre til
+          # processen (CapEff=0).
           securityContext:
+            runAsUser: 65534
+            runAsNonRoot: true
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+              add: ["NET_BIND_SERVICE"]
           resources:
             requests:
               cpu: 50m
