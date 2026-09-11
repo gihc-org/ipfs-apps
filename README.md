@@ -41,14 +41,20 @@ fejler bag NAT.
 ## Repo-struktur
 
 ```
-frontend/            Statisk frontend (legacy chat-sider indtil M2)
+frontend/            Statisk frontend (loft.html + rtc.js; legacy chat-sider til M5)
 chat/                Rust/Axum-backend (Loft-kernen)
+e2e/                 Playwright-tests (mod lokal backend eller deployet miljø)
 k8s/test/            Manifester til test-miljø (loft-test)
-scripts/             DNS-record og fremtidige driftsscripts
+k8s/prod/            Manifester til prod (forberedt, ikke deployet)
+scripts/             DNS-record, smoke-test og fremtidige driftsscripts
 adr-drafts/          ADR-udkast (0027 link-rum/k3s, 0028 mesh)
 MIGRATION.md         Migrerings- og refokeringsplan
 TODO.md              Backlog (M0–M5)
 ```
+
+`ansible/`, `caddy/`, `docker-compose*.yml` og `.woodpecker.yaml` er rester af
+Caddy/compose-tiden og slettes i M5 — flowet dengang er beskrevet i
+[MIGRATION.md](MIGRATION.md) under "Historisk: sådan deployede vi før GHCR".
 
 ## API
 
@@ -185,6 +191,11 @@ Planen står i [MIGRATION.md](MIGRATION.md). Kort fortalt:
 - Secrets: `pass` → `kubectl create secret loft-secrets` (ingen hemmeligheder
   i git). `TURN_SECRET` er reelt offentlig (HMAC, 24 t TTL) og ligger i
   ConfigMap for test.
+- Historisk: indtil M4 blev image'et bygget på selve VPS'en af
+  `docker compose … up -d --build` (intet registry) og frontenden lagt på
+  IPFS bag DNSLink. M4 er derfor første gang der bygges og publiceres images i
+  CI — se "Historisk: sådan deployede vi før GHCR" i
+  [MIGRATION.md](MIGRATION.md).
 
 ## Sikkerhed og GDPR
 

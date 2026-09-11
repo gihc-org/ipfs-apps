@@ -1,6 +1,7 @@
 # Migration af chat til k3s + refokus til Loft — plan
 
-Status: 2026-09-09 · branch `feat/loft-k3s-refocus`
+Status: 2026-09-09 (historik-afsnit tilføjet 2026-09-11) · branch
+`feat/loft-k3s-refocus`
 
 Dette dokument afløser den tidligere k3s-plan (2026-08-01) og er skrevet sammen
 med beslutningen om at fokusere projektet: chat-appen bliver **Loft** — WebRTC
@@ -58,8 +59,53 @@ Forudsætninger og platform-tilstand står i `../infra/MIGRATION.md` — vigtigs
 | API-image | `ghcr.io/gihc-org/loft` |
 | Web-image | `ghcr.io/gihc-org/loft-web` |
 | Namespace (test) | `loft-test` |
-| Manifester | `k8s/test/` (prod: `k8s/prod/` senere) |
+| Manifester | `k8s/test/` (prod: `k8s/prod/`, forberedt men ikke deployet) |
 | DNS-script | `scripts/create-dns-record.sh` |
+
+## Historisk: sådan deployede vi før GHCR (Caddy + compose)
+
+M4 er første gang projektet publicerer et image. Frem til da fandtes der intet
+registry-led: `chat` havde `build: ./chat` i både `docker-compose.yml` og
+`docker-compose.prod.yml`, og Ansible byggede image'et direkte på VPS'en.
+
+Flowet (beskrevet i [runbooks/deploy.md](runbooks/deploy.md); miljø-varianterne
+ligger i `ansible/deploy-test.yml` og `ansible/deploy-promote.yml`):
+
+1. rsync af kildetræet til `/opt/chat/` — uden `.git`, `ansible/` og
+   `chat/target`
+2. `chat.caddy` skrevet ind i den delte platform-Caddy
+   (`/opt/platform/caddy/conf.d/`) efterfulgt af `caddy reload` (ADR-0019)
+3. `.env` renderet fra vault (`templates/env.j2`)
+4. postgres startet alene, test-/beta-databaserne oprettet idempotent
+5. `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+   --build` — tre services (`chat`, `chat-test`, `chat-beta`) bygget fra samme
+   kilde og adskilt af env-variabler og databasenavn
+6. frontenden uploadet med `ipfs add -r frontend/` i kubo-containeren → CID
+7. `_dnslink.<miljø>`-TXT opdateret via Simply.com-API'et; hvert miljø havde
+   sin egen `config.js` (`templates/{test-,beta-,}config.js.j2`) og dermed sit
+   eget CID
+8. smoke test via `docker exec … psql` (`POST /auth/token` m.fl.) og, ved
+   promote, en ZAP-baseline
+
+Konsekvenser for M4:
+
+- **Rollback var kildekode:** `git checkout <commit>` og kør playbooken igen.
+  Der fandtes ingen image-tags at rulle tilbage til; med GHCR bliver det
+  `kubectl set image` på et SHA-tag.
+- **Der var ingen aktiv CI.** Den eneste pipeline-definition var
+  `.woodpecker.yaml` (commit `c2f1cf0`): `deploy-test` → `e2e` →
+  `deploy-promote`, med secrets i Woodpecker-UI'et. Den kørte aldrig —
+  Woodpecker-serveren skulle ligge på en Raspberry Pi og var "afventer fortsat
+  hjemkomst" i referaterne 2026-05-17, -18 og -28 — og den lyttede på
+  `branch: main`, mens repoets default branch er `trunk` (`origin/main`
+  indeholder kun "Initial commit"). Deploy skete i praksis manuelt med
+  `ansible-playbook … --ask-vault-pass` fra udviklermaskinen.
+- **Frontenden var ikke et image:** den lå på IPFS bag DNSLink.
+  `frontend/Dockerfile` (statisk nginx-image med `config.js` fra ConfigMap) er
+  derfor en ny komponent i M2/M4, ikke en omskrivning af noget eksisterende.
+- **TURN-reglerne er ikke nye:** `docker-compose.prod.yml` havde allerede
+  coturn med porte 3478 (TCP+UDP) og 49152–49200/UDP; k3s-versionen flytter
+  blot containeren til et `hostNetwork`-pod med samme firewall-regler.
 
 ## Trin-for-trin
 
@@ -90,6 +136,12 @@ Forudsætninger og platform-tilstand står i `../infra/MIGRATION.md` — vigtigs
 
 ## Tekniske noter / gotchas
 
+- **Workflows skal ligge på default branch:** Actions-fanen og
+  `workflow_dispatch` læser kun `.github/workflows/` fra `trunk`. `push`-events
+  bruger derimod workflow-filen fra den gren der pushes — og derfor virkede
+  `branches: [trunk]` ikke fra feature-grenen. Konsekvensen er håndgribelig:
+  indtil workflowet ligger på `trunk`, findes `ghcr.io/gihc-org/loft` og
+  `loft-web` ikke, og `k8s/test/` kan ikke deployes.
 - **WebSocket-timeouts:** ingress-nginx `proxy-read-timeout` /
   `proxy-send-timeout` = 3600 på `/v1/ws/...` — forbindelsen er langlivet.
   `proxy-body-size` udgår når filoverførsel fjernes.
