@@ -3,6 +3,9 @@ name: Build and push Loft images
 on:
   push:
     branches: [trunk]
+  # Testmiljøet deployer fra denne gren før M5-merge til trunk — derfor kan
+  # workflowet også startes manuelt på en vilkårlig gren.
+  workflow_dispatch:
 
 jobs:
   api:
@@ -109,7 +112,9 @@ jobs:
       - name: Run Playwright e2e
         working-directory: e2e
         env:
-          BASE_URL: http://localhost:8888
+          # BASE_URL sættes bevidst IKKE: playwright.config.ts starter selv en
+          # statisk server på :8888 når BASE_URL er tom (sættes BASE_URL, går
+          # testene mod et allerede kørende miljø i stedet).
           TEST_API_URL: http://localhost:8080
         run: npx playwright test
 
