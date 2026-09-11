@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: loft-config
+  namespace: loft-prod
+data:
+  # Frontend-konfiguration pr. miljø — mountes på /usr/share/nginx/html/config.js.
+  # TURN_SECRET er reelt offentlig (HMAC-baserede credentials, 24 t TTL) og
+  # deles med coturn via nøglen turn-secret nedenfor — hold de to i sync.
+  # Byt placeholderne ud før prod-deploy (samme værdi begge steder).
+  config.js: |
+    const API_URL = 'https://loft.gihc.online';
+    const WS_URL  = 'wss://loft.gihc.online';
+    const TURN_URL = 'turn:loft.gihc.online:3478?transport=udp';
+    const TURN_SECRET = 'change-me-prod-turn-secret';
+  turn-secret: "change-me-prod-turn-secret"
+  realm: "loft.gihc.online"
+  external-ip: "65.109.233.92"
+  allowed-origin: "https://loft.gihc.online"
+  loft-ttl-hours: "168"

@@ -2,7 +2,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: loft
-  namespace: loft-test
+  namespace: loft-prod
   annotations:
     # Start staging → verificér cert → skift til letsencrypt-prod.
     cert-manager.io/cluster-issuer: letsencrypt-staging
@@ -13,10 +13,10 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - loft.test.gihc.online
-      secretName: loft-test-gihc-online-tls
+        - loft.gihc.online
+      secretName: loft-gihc-online-tls
   rules:
-    - host: loft.test.gihc.online
+    - host: loft.gihc.online
       http:
         paths:
           # Liveness-endenpointet ligger i API'et, men skal kunne nås udefra

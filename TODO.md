@@ -14,7 +14,7 @@ genbruges.
 Kopér blokken herunder som første besked til agenten:
 
 > Fortsæt arbejdet på **Loft** i branchen `feat/loft-k3s-refocus`
-> (M0–M3 færdige, 2026-09-09).
+> (M0–M3 færdige; M4 undervejs — smoke-test og `k8s/prod/`-manifester er klar).
 >
 > Læs først `README.md`, `MIGRATION.md`, `TODO.md` og ADR-drafts
 > `0027-loft-link-rooms.md` + `0028-loft-group-mesh.md`. AGENTS.md's
@@ -34,8 +34,8 @@ Kopér blokken herunder som første besked til agenten:
 > Næste opgave (M4): deploy af test-miljø — A-record via
 > `scripts/create-dns-record.sh`, secret `loft-secrets`, firewall i
 > `~/projects/infra/tofu` (3478 + 49152–49200), apply `k8s/test/`,
-> cert staging → prod. Dele af M4 kræver adgang til k3s/pass/infra-repoet —
-> spørg brugeren før trin uden for repoet.
+> cert staging → prod. Følg `runbooks/loft-deploy.md`. Dele af M4 kræver
+> adgang til k3s/pass/infra-repoet — spørg brugeren før trin uden for repoet.
 >
 > Kommandoer:
 > - Unit: `cd chat && cargo test --lib`
@@ -71,15 +71,15 @@ Kopér blokken herunder som første besked til agenten:
 
 ## M2 — Frontend: Loft-UI
 
-- [ ] `loft.html` — opret/deltag via link, vælg navn, mic/cam-toggle,
+- [x] `loft.html` — opret/deltag via link, vælg navn, mic/cam-toggle,
       skærmdeling, forlad rum
-- [ ] `rtc.js` — mesh-modul med ét `RTCPeerConnection` pr. deltager og
+- [x] `rtc.js` — mesh-modul med ét `RTCPeerConnection` pr. deltager og
       perfect negotiation (refaktor af chat.html's 1:1-logik)
-- [ ] Genbrug ICE/TURN-logik (`addTurnServer`) og auto-reconnect med backoff
+- [x] Genbrug ICE/TURN-logik (`addTurnServer`) og auto-reconnect med backoff
 - [x] Invite: copy-link + `navigator.share` (QR udskudt — kræver ekstern lib)
 - [x] Luk loft (ejer-nøgle via `DELETE /v1/lofts/:id` + `closed`-broadcast)
 - [ ] Link-preview: beslut backend-rendret `/h/:id` vs. generiske og-tags
-- [ ] Deltager-UI opdateres i realtid via roster/presence-beskeder
+- [x] Deltager-UI opdateres i realtid via roster/presence-beskeder
 - [ ] Nye sider afløser index/rooms/chat.html (slet når e2e er grøn)
 
 ## M3 — Tests + CI
@@ -97,10 +97,14 @@ Kopér blokken herunder som første besked til agenten:
 - [ ] A-record for `loft.test.gihc.online` via `scripts/create-dns-record.sh`
 - [ ] Secret `loft-secrets` i `loft-test` (postgres-password, database-url)
 - [ ] Apply `k8s/test/` (postgres, api, web, ingress, coturn)
-- [ ] Firewall i `infra/tofu/main.tf`: TCP+UDP 3478, UDP 49152–49200
+- [x] Firewall i `infra/tofu/main.tf`: TCP+UDP 3478, UDP 49152–49200 — lagt
+      ind 2026-08-01; verificér med `tofu plan` i `~/projects/infra/tofu`
 - [ ] `letsencrypt-staging` → verificér cert → `letsencrypt-prod`
-- [ ] Smoke-test omskrevet til `kubectl exec` + gæste-loft-flow
-- [ ] Manifester for beta/prod i `k8s/prod/`
+- [x] Smoke-test omskrevet til `kubectl exec` + gæste-loft-flow
+      (`scripts/smoke-test.sh` + `scripts/smoke-ws.py`, 18 checks)
+- [x] Manifester for beta/prod i `k8s/prod/` (forberedt, ikke deployet)
+- [x] Ingress-rute for `/healthz` (lå ellers hos web-frontenden → 404)
+- [x] Runbook: `runbooks/loft-deploy.md` (DNS → secret → apply → cert → test)
 
 ## M5 — Oprydning
 

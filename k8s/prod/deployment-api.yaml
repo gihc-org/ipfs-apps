@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loft-api
+  namespace: loft-prod
+spec:
+  replicas: 1
+  # Lofts/presence er in-memory — flere replicas er meningsløse.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: loft-api
+  template:
+    metadata:
+      labels:
+        app: loft-api
+    spec:
+      containers:
+        - name: loft-api
+          image: ghcr.io/gihc-org/loft:latest
+          imagePullPolicy: Always # deploy med SHA-tag for rollback-mulighed
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: loft-secrets
+                  key: database-url
+            - name: ALLOWED_ORIGIN
+              valueFrom:
+                configMapKeyRef:
+                  name: loft-config
+                  key: allowed-origin
+            - name: LOFT_TTL_HOURS
+              valueFrom:
+                configMapKeyRef:
+                  name: loft-config
+                  key: loft-ttl-hours
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]

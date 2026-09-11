@@ -5,9 +5,10 @@ lad andre joine med lyd, video og skærmdeling. Ingen konti, ingen app-install:
 linket er adgangsnøglen, og deltageren vælger selv et navn.
 
 > Status: under refokusering fra en generel chat-app til Loft samt migrering
-> fra Caddy + Docker Compose til k3s. Backend (M1) er implementeret og testet;
-> frontend (M2) er ikke påbegyndt. Se [MIGRATION.md](MIGRATION.md) og
-> [TODO.md](TODO.md).
+> fra Caddy + Docker Compose til k3s. M1–M3 er færdige (backend, frontend og
+> Playwright-e2e) og testet lokalt; M4 — deploy af testmiljøet — er i gang. Se
+> [MIGRATION.md](MIGRATION.md), [TODO.md](TODO.md) og
+> [runbooks/loft-deploy.md](runbooks/loft-deploy.md).
 
 ## Koncept
 
@@ -142,6 +143,12 @@ cd chat && cargo test --lib
 
 # Integrationstests (kræver PostgreSQL-superuser uden databasenavn)
 cd chat && DATABASE_URL=postgres://postgres:postgres@localhost:5432 cargo test
+
+# E2e (kræver kørende backend)
+cd e2e && TEST_API_URL=http://localhost:8080 npx playwright test
+
+# Smoke-test af et deployet miljø (REST + WebSocket + DB-rækken væk)
+./scripts/smoke-test.sh https://loft.test.gihc.online --namespace loft-test
 ```
 
 `#[sqlx::test]` opretter en midlertidig database pr. test og dropper den igen.
@@ -172,6 +179,9 @@ Planen står i [MIGRATION.md](MIGRATION.md). Kort fortalt:
   (frontend), bygget i GitHub Actions med SHA-tags.
 - Manifester: [k8s/test/](k8s/test/README.md) — namespace `loft-test`, postgres
   + PVC, api/web, coturn (`hostNetwork`), ingress med WS-timeouts.
+- Prod-manifester (forberedt, ikke deployet): [k8s/prod/](k8s/prod/README.md).
+- Trin-for-trin: [runbooks/loft-deploy.md](runbooks/loft-deploy.md) — DNS,
+  secret, apply, cert (staging → prod), smoke-test, rollback.
 - Secrets: `pass` → `kubectl create secret loft-secrets` (ingen hemmeligheder
   i git). `TURN_SECRET` er reelt offentlig (HMAC, 24 t TTL) og ligger i
   ConfigMap for test.
@@ -190,7 +200,7 @@ Planen står i [MIGRATION.md](MIGRATION.md). Kort fortalt:
 Se [TODO.md](TODO.md):
 
 - **M1 (færdig):** backend — lofts, WS-protokol, /healthz, TTL, non-root image
-- **M2:** frontend — `loft.html` + `rtc.js`-mesh, deling/invite
-- **M3:** Playwright-e2e + CI
-- **M4:** k3s-deploy af test-miljø
+- **M2 (færdig):** frontend — `loft.html` + `rtc.js`-mesh, deling/invite
+- **M3 (færdig):** Playwright-e2e + CI
+- **M4 (i gang):** k3s-deploy af test-miljø
 - **M5:** oprydning af chat-stak (compose/ansible/caddy/IPFS) og gamle domæner

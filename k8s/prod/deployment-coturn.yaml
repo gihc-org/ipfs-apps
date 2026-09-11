@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: loft-coturn
-  namespace: loft-test
+  namespace: loft-prod
 spec:
   replicas: 1
   strategy:
