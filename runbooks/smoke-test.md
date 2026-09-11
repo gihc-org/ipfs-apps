@@ -1,67 +1,80 @@
-# Smoke test
+# Smoke test — Loft
 
 ## Hvad tester den
 
-`scripts/smoke-test.sh` kører automatisk sidst i Ansible-playbook'en og
-verificerer fem ting mod `https://api.gihc.online`:
-
-| Trin | Endpoint | Forventet |
-|------|----------|-----------|
-| 1 | `POST /auth/token` | 200, JWT returneret |
-| 2 | `GET /auth/me` | 200, GDPR-felter til stede (id, username, email, email_verified, created_at) |
-| 3 | `GET /rooms` | 200 |
-| 4 | `DELETE /auth/me` | 204 |
-| 5 | `GET /auth/me` efter sletning | 401 |
-
-Testen opretter en midlertidig bruger direkte i databasen (omgår CAPTCHA),
-kører sine checks og sletter brugeren igen via `DELETE /auth/me`. `trap`
-sikrer oprydning selv ved fejl.
-
-## Kør manuelt
+`scripts/smoke-test.sh` kører gæste-loft-flowet ende-til-ende mod ét origin
+(frontend + API + WebSocket deler host). Den bruges efter deploy (se
+[loft-deploy.md](loft-deploy.md)) og kan køres manuelt mod ethvert miljø.
 
 ```bash
-PG_PASS=$(grep POSTGRES_PASSWORD /home/kristian/projects/ipfs-apps/.env | cut -d= -f2)
+./scripts/smoke-test.sh https://loft.test.gihc.online --namespace loft-test
+```
 
-ssh -i ~/.ssh/id_ed25519.hetzner root@65.109.233.92 \
-  "bash /opt/chat/scripts/smoke-test.sh \
-    https://api.gihc.online chatuser '$PG_PASS' chatdb /opt/chat"
+| Trin | Kald | Forventet |
+|------|------|-----------|
+| 1 | `GET /healthz` | 200 `ok` |
+| 2 | `POST /v1/lofts` | 201 med `id`, `url` og `owner_token` |
+| 3 | `GET /v1/lofts/:id` | 200, navn matcher, `owner_token` lækkes ikke |
+| 4 | `GET /v1/lofts/:ukendt-id` | 404 |
+| 5 | WS `/v1/ws/:loft_id` | to gæster: roster, join-broadcast, media-state og signal med server-stemplet `from`, signal til ukendt modtager droppes, leave annonceres |
+| 6 | `DELETE /v1/lofts/:id` uden/forkert ejer-nøgle | 403 |
+| 7 | `DELETE /v1/lofts/:id` med ejer-nøgle | 204 |
+| 8 | `GET` + `DELETE` efter lukning | 404 |
+| 9 | `kubectl exec` i `loft-postgres` → `psql` | loftet findes ikke i `lofts`-tabellen |
+
+Trin 5 kører [scripts/smoke-ws.py](../scripts/smoke-ws.py) (websockets-biblioteket)
+og er det eneste sted ud over Playwright hvor WebSocket-protokollen afprøves.
+Trin 9 kræver `--namespace` og dermed kubeconfig + SSH-tunnel; uden flaget
+springes databasen over.
+
+Testen opretter ét loft og lukker det igen med ejer-nøglen. `trap cleanup`
+sletter loftet, hvis et tidligere trin fejler.
+
+## Kør lokalt mod `cargo run`
+
+```bash
+cd chat && DATABASE_URL=postgres://postgres:postgres@localhost:5432 cargo run   # 0.0.0.0:8080
+./scripts/smoke-test.sh http://localhost:8080
+```
+
+Bemærk: `POST /v1/lofts` er rate-limited (1/s, burst 10 pr. IP) — kør ikke
+scriptet i stram løkke bag samme IP.
+
+## Staging-certifikat
+
+Er miljøet stadig på `letsencrypt-staging`, validerer Python-klienten ikke
+certet. Brug da:
+
+```bash
+./scripts/smoke-test.sh https://loft.test.gihc.online --insecure
 ```
 
 ## Hvis et trin fejler
 
-**Trin 1 fejler (401 ved login):**
-- API'et er oppe men brugeren kunne ikke logge ind
-- Tjek at argon2id-hashet i scriptet stadig matcher applikationens parametre (se nedenfor)
-- Tjek `docker logs chat-chat-1 --tail 50` for fejl
+**Trin 1 (healthz) fejler med 404:** ingressen mangler `/healthz`-ruten — den
+ligger på API'et, ikke på web-frontenden (se `k8s/test/ingress.yaml`).
 
-**Trin 1 fejler (502/503):**
-- Backend er ikke oppe — tjek `docker ps` på serveren
-- Kør `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d` manuelt
+**Trin 1 fejler med 502/503:** API-pod'en er ikke klar. Tjek
+`kubectl -n loft-test get pods` og `kubectl -n loft-test logs deploy/loft-api`.
+Ofte `loft-secrets` (forkert `database-url`) eller postgres der ikke er klar.
 
-**Trin 2 fejler (GDPR-felter mangler):**
-- `GET /auth/me` returnerer ikke alle felter — sandsynligvis en migration der ikke er kørt
-- Tjek `docker logs chat-chat-1` for migration-fejl ved startup
+**Trin 2 fejler med 500:** API'et kan ikke skrive til databasen — tjek
+migrationsfejl i API-loggen ved startup.
 
-**Trin 5 fejler (stadig 200 efter sletning):**
-- `DELETE /auth/me` returnerede 204 men brugeren er ikke slettet
-- Sandsynligvis et databaseproblem — tjek PostgreSQL-logs
+**Trin 5 fejler med "ingen besked inden for 10s":** WebSocket-håndtrykket lykkes
+ikke. Tjek at loftet findes (trin 3), at ingressens `proxy-read-timeout` er
+sat, og at `websockets`-versionen lokalt ikke er ændret.
 
-## Regenerer argon2id-hash
+**Trin 5 fejler med "uventet signal-besked":** serveren videresender signaler
+til ukendte modtagere — det er en regressionsfejl i
+`chat/src/routes/lofts.rs`, ikke et miljøproblem.
 
-Smoke-testen bruger et forudberegnet hash af adgangskoden `SmokeTest99!`
-med `Argon2::default()` (m=19456, t=2, p=1). Hvis parametrene i
-`chat/src/auth.rs` ændres, skal hashet regenereres:
+**Trin 9 fejler:** `kubectl exec` kunne ikke køre `psql` (forkert
+namespace/pod-navn) eller loftet blev ikke slettet. Kør
+`kubectl -n loft-test exec deploy/loft-postgres -- psql -U loft -d loftdb -c '\dt'`.
 
-```bash
-cd /home/kristian/projects/ipfs-apps/chat
-mkdir -p examples
-cat > examples/gen_hash.rs << 'EOF'
-fn main() {
-    println!("{}", chat::auth::hash_password("SmokeTest99!"));
-}
-EOF
-cargo run --example gen_hash
-rm examples/gen_hash.rs && rmdir examples
-```
+## Relateret
 
-Opdater `TEST_HASH` i `scripts/smoke-test.sh` med det nye hash.
+- Playwright-e2e mod det deployede miljø: `cd e2e && npm run test:test`
+- WebRTC-forbindelsesproblemer: [webrtc-debugging.md](webrtc-debugging.md)
+  (skrevet i chat-tiden — STUN/TURN-afsnittet er stadig gyldigt)
