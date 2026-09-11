@@ -158,8 +158,11 @@ med start-prompt. Her i repoet er der kun tilbage at følge op:
 
 - [ ] Slet `docker-compose*.yml`, `ansible/`, `caddy/`, `.woodpecker.yaml`
       og IPFS/DNSLink-rester
-- [ ] Slet døde DNS-records (`api.gihc.online`, `chat.apps.gihc.online`,
-      `beta.*`, `test.*`)
+- [x] Slet døde DNS-records — 24 records slettet 2026-09-12 (18 A + 6
+      `_dnslink`-TXT). Zonen har nu 12 records: kun de fem levende hosts
+      (`loft.test`, `hyfer.test`, `capture.test`, `test`, `higgs`) plus
+      MX/TXT/NS til mail. Liste med værdier (og CID'er) står i
+      `referater/2026-09-12-00-15.md`, hvis en record skal genskabes.
 - [ ] Opdater `runbooks/`, `AGENTS.md` og ADR-index
 - [ ] Omdøb `chat/` til `loft/` og genovervej repoets navn
 - [ ] Referat i `referater/`
