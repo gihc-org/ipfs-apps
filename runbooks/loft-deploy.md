@@ -45,7 +45,10 @@ resolver er allerede rettet, så cert-manager's self-check slår hurtigt igennem
 ## 2. Firewall (TURN)
 
 Reglerne ligger allerede i `~/projects/infra/tofu/main.tf`: **TCP+UDP 3478** og
-**UDP 49152–49200**. Bekræft at de er applied, før coturn tages i brug:
+**UDP 49152–49200**. De er applied på `platform-firewall` (åbne mod
+`0.0.0.0/0` siden 2026-07-04), så TURN er offentligt tilgængeligt i samme
+øjeblik coturn-pod'en kører — der er ingen ekstra "åbn"-kommando. Bekræft
+reglerne med:
 
 ```bash
 cd ~/projects/infra/tofu && direnv allow && tofu plan   # forventet: no changes
@@ -53,6 +56,11 @@ cd ~/projects/infra/tofu && direnv allow && tofu plan   # forventet: no changes
 
 Uden de porte virker mesh-lyd/video stadig på samme netværk (STUN), men fejler
 bag NAT — det er først verificerbart med e2e fra to forskellige netværk.
+
+Misbrugsbeskyttelsen sidder i coturns args: `--denied-peer-ip` for
+RFC1918/loopback/link-local/CGNAT og kvoter (`--max-bps`, `--bps-capacity`,
+`--user-quota`, `--total-quota`). Baggrunden er at `TURN_SECRET` er offentlig
+(den ligger i `config.js`), så alle kan udstede credentials.
 
 ## 3. Secret `loft-secrets`
 
@@ -132,10 +140,21 @@ bash scripts/smoke-test.sh https://loft.test.gihc.online --namespace loft-test
 
 # Playwright mod det deployede miljø (rigtige MediaStreams, falske enheder)
 cd e2e && npm run test:test
+
+# TURN-relay (relay-only ICE, to browser-kontekster gennem coturn)
+cd e2e && TURN_URL='turn:loft.test.gihc.online:3478?transport=udp' \
+  TURN_SECRET="$(kubectl -n loft-test get cm loft-config -o jsonpath='{.data.turn-secret}')" \
+  BASE_URL=https://loft.test.gihc.online npx playwright test tests/turn.spec.ts
 ```
 
 `scripts/smoke-ws.py` forbinder to WebSocket-gæster og tjekker roster,
 `join`/`leave`, `media-state` og at signaler til ukendte deltagere droppes.
+
+TURN-testen er den eneste der beviser at relayeren virker (STUN-only-tests
+forbinder direkte og rører aldrig coturn). Begge peers tvinges til
+`iceTransportPolicy: 'relay'`, og testen fejler hvis kandidaterne ikke er af
+typen `relay`, eller hvis data ikke kommer begge veje. Den skal køres fra en
+maskine med DNS- og UDP-adgang — i CI springes den over.
 
 ## 7. Rollback
 
@@ -168,5 +187,13 @@ gamle chat-records.
 - **`frontend/config.js` overskrives** i k8s af ConfigMap'en — ændringer i
   repo-filen påvirker kun lokal udvikling.
 - **`TEST_API_URL` uden `/v1`** i e2e; `BASE_URL` peger på frontenden.
+- **DNS-cache efter ny A-record:** din lokale resolver kan have NXDOMAIN-cachet
+  navnet (systemd-resolved gør det i SOA-minimum-TTL). Tøm med
+  `sudo resolvectl flush-caches`, eller brug `--resolve` — smoke-testen
+  understøtter `--resolve host:port:ip`, og `smoke-ws.py` har
+  `--connect-ip`/`--sni` til samme formål.
+- **Browserens ICE-stak bruger ikke `--host-resolver-rules`** til TURN/STUN:
+  kan din maskine ikke slå værtsnavnet op, så kør relay-testen med TURN på IP
+  (`turn:65.109.233.92:3478?transport=udp`).
 - **Ingress-logs**: loft-id'et er adgangsnøglen, så del aldrig fulde URL'er
   med `id=`-parameteren i fejlrapporter.

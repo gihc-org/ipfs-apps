@@ -94,17 +94,26 @@ Kopér blokken herunder som første besked til agenten:
 
 ## M4 — k3s deploy (test-miljø)
 
-- [ ] A-record for `loft.test.gihc.online` via `scripts/create-dns-record.sh`
-- [ ] Secret `loft-secrets` i `loft-test` (postgres-password, database-url)
-- [ ] Apply `k8s/test/` (postgres, api, web, ingress, coturn)
+- [x] A-record for `loft.test.gihc.online` via `scripts/create-dns-record.sh`
+- [x] Secret `loft-secrets` i `loft-test` (postgres-password, database-url) —
+      password genereret og gemt i `pass` som `loft/postgres-password`
+- [x] Apply `k8s/test/` (postgres, api, web, ingress, coturn) — kørende
 - [x] Firewall i `infra/tofu/main.tf`: TCP+UDP 3478, UDP 49152–49200 — lagt
       ind 2026-08-01; verificér med `tofu plan` i `~/projects/infra/tofu`
-- [ ] `letsencrypt-staging` → verificér cert → `letsencrypt-prod`
+- [x] `letsencrypt-staging` → verificér cert → `letsencrypt-prod` (betroet
+      cert, `curl` uden `-k` giver 200)
 - [x] Smoke-test omskrevet til `kubectl exec` + gæste-loft-flow
       (`scripts/smoke-test.sh` + `scripts/smoke-ws.py`, 18 checks)
 - [x] Manifester for beta/prod i `k8s/prod/` (forberedt, ikke deployet)
 - [x] Ingress-rute for `/healthz` (lå ellers hos web-frontenden → 404)
 - [x] Runbook: `runbooks/loft-deploy.md` (DNS → secret → apply → cert → test)
+- [x] coturn hærdet: non-root, read-only rootfs, no_new_privs, minimal
+      capability-bounding-set (`add: ["NET_BIND_SERVICE"]`)
+- [x] TURN-misbrugsbeskyttelse: `--denied-peer-ip` for private/loopback/
+      link-local/CGNAT + kvoter (`max-bps`, `bps-capacity`, `user-quota`,
+      `total-quota`, `stale-nonce`)
+- [x] TURN-relay-test (`e2e/tests/turn.spec.ts`, relay-only ICE, kørt grønt mod
+      loft.test.gihc.online)
 
 ## M5 — Oprydning
 
@@ -122,6 +131,11 @@ Kopér blokken herunder som første besked til agenten:
 - [ ] Capability-link er tilfældig UUID; verificér at ingress-logs ikke
       logger query/fragment med hvis tokens indføres
 - [ ] Link-expiry/revocation (TTL på lofts)
+- [ ] Udsted TURN-credentials i API'et (fx `GET /v1/ice`) med kort TTL, så
+      `TURN_SECRET` ikke længere ligger i frontendens `config.js` — HMAC'en
+      hører hjemme server-side
+- [ ] Overvåg coturns allocations/båndbredde (kvoterne er sat, men der er
+      ingen alarm hvis loft-test bruges som åben relay)
 - [ ] CSP: `default-src 'self'`, kamera/mikrofon via `Permissions-Policy`,
       ingen tredjeparts-scripts (Turnstile udgår)
 - [ ] Containerhærdning: non-root, read-only fs, `no-new-privileges`

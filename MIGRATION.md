@@ -142,6 +142,19 @@ Konsekvenser for M4:
   `branches: [trunk]` ikke fra feature-grenen. Konsekvensen er håndgribelig:
   indtil workflowet ligger på `trunk`, findes `ghcr.io/gihc-org/loft` og
   `loft-web` ikke, og `k8s/test/` kan ikke deployes.
+- **coturn-binæren bærer file-capabilities:** `capabilities.drop: ["ALL"]`
+  tømmer bounding-settet, og så nægter kernelen `execve` af `/usr/bin/turnserver`
+  ("Operation not permitted") → crash-loop. Læg `NET_BIND_SERVICE` tilbage i
+  bounding-settet (`add: ["NET_BIND_SERVICE"]`); med
+  `allowPrivilegeEscalation: false` bliver den ikke givet videre til processen
+  (CapEff=0). Verificeret 2026-09-11.
+- **TURN er offentligt eksponeret:** firewall-reglerne (TCP+UDP 3478, UDP
+  49152–49200) har været åbne mod `0.0.0.0/0` siden 2026-07-04, så TURN er
+  tilgængeligt i samme øjeblik coturn-pod'en kører. `TURN_SECRET` ligger i
+  `config.js` og er dermed offentlig → alle kan udstede HMAC-credentials.
+  Modvægten er `--denied-peer-ip` for RFC1918/loopback/link-local/CGNAT og
+  kvoter (`--max-bps`, `--bps-capacity`, `--user-quota`, `--total-quota`).
+  Følg-op: udsted kortlivede credentials fra API'et i stedet.
 - **WebSocket-timeouts:** ingress-nginx `proxy-read-timeout` /
   `proxy-send-timeout` = 3600 på `/v1/ws/...` — forbindelsen er langlivet.
   `proxy-body-size` udgår når filoverførsel fjernes.

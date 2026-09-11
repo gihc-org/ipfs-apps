@@ -155,6 +155,11 @@ cd e2e && TEST_API_URL=http://localhost:8080 npx playwright test
 
 # Smoke-test af et deployet miljø (REST + WebSocket + DB-rækken væk)
 ./scripts/smoke-test.sh https://loft.test.gihc.online --namespace loft-test
+
+# TURN-relay mod et deployet miljø (relay-only ICE gennem coturn)
+cd e2e && TURN_URL='turn:loft.test.gihc.online:3478?transport=udp' \
+  TURN_SECRET="$(kubectl -n loft-test get cm loft-config -o jsonpath='{.data.turn-secret}')" \
+  BASE_URL=https://loft.test.gihc.online npx playwright test tests/turn.spec.ts
 ```
 
 `#[sqlx::test]` opretter en midlertidig database pr. test og dropper den igen.
@@ -202,8 +207,12 @@ Planen står i [MIGRATION.md](MIGRATION.md). Kort fortalt:
 - Ingen konti/emails → ingen persondata i databasen; deltagernavne findes kun i
   hukommelsen under sessionen.
 - Rate limiting på loft-oprettelse (tower_governor, XFF-baseret).
-- Containerhærdning: non-root (uid 10001), read-only rootfs i k8s, `drop:
-  ALL`.
+- Containerhærdning: API kører non-root (uid 10001) med read-only rootfs;
+  coturn kører som `nobody` med read-only rootfs, `no_new_privs` og kun
+  `NET_BIND_SERVICE` i bounding-settet.
+- TURN er eksponeret mod internettet, og `TURN_SECRET` er offentlig (den
+  ligger i frontendens `config.js`). Derfor afvises relayer til
+  RFC1918/loopback/link-local/CGNAT, og der er kvoter pr. session og i alt.
 - Signal-beskeder gemmes aldrig; mediestrømme er P2P og DTLS-krypterede.
 
 ## Roadmap

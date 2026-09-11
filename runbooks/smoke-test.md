@@ -10,6 +10,14 @@
 ./scripts/smoke-test.sh https://loft.test.gihc.online --namespace loft-test
 ```
 
+Er A-recorden lige oprettet og din resolver har NXDOMAIN-cachet navnet, kan
+IP'en pinnes som med `curl --resolve`:
+
+```bash
+./scripts/smoke-test.sh https://loft.test.gihc.online --namespace loft-test \
+  --resolve loft.test.gihc.online:443:65.109.233.92
+```
+
 | Trin | Kald | Forventet |
 |------|------|-----------|
 | 1 | `GET /healthz` | 200 `ok` |
@@ -76,5 +84,7 @@ namespace/pod-navn) eller loftet blev ikke slettet. Kør
 ## Relateret
 
 - Playwright-e2e mod det deployede miljø: `cd e2e && npm run test:test`
+- TURN-relay (den del STUN-only-tests ikke dækker): `e2e/tests/turn.spec.ts`,
+  se verifikationsafsnittet i [loft-deploy.md](loft-deploy.md)
 - WebRTC-forbindelsesproblemer: [webrtc-debugging.md](webrtc-debugging.md)
   (skrevet i chat-tiden — STUN/TURN-afsnittet er stadig gyldigt)

@@ -10,6 +10,8 @@
 #   ./scripts/smoke-test.sh https://loft.test.gihc.online
 #   ./scripts/smoke-test.sh https://loft.test.gihc.online --namespace loft-test
 #   ./scripts/smoke-test.sh https://loft.test.gihc.online --insecure   # staging-cert
+#   ./scripts/smoke-test.sh https://loft.test.gihc.online \
+#       --resolve loft.test.gihc.online:443:65.109.233.92               # DNS endnu ikke slået igennem
 #
 # --namespace slår databasen op via `kubectl exec` i postgres-poden; uden
 # flaget springes DB-verifikationen over (fx fra en maskine uden kubeconfig).
@@ -23,6 +25,7 @@ shift
 
 NAMESPACE=""
 INSECURE=0
+RESOLVE_SPEC=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --namespace)
@@ -32,6 +35,11 @@ while [ $# -gt 0 ]; do
         --insecure)
             INSECURE=1
             shift
+            ;;
+        --resolve)
+            # Samme syntaks som curl: host:port:ip
+            RESOLVE_SPEC="${2:?--resolve kræver host:port:ip}"
+            shift 2
             ;;
         *)
             echo "Ukendt argument: $1" >&2
@@ -44,6 +52,9 @@ ORIGIN="${ORIGIN%/}"
 CURL=(curl -sS --max-time 10)
 if [ "$INSECURE" = 1 ]; then
     CURL+=(-k)
+fi
+if [ -n "$RESOLVE_SPEC" ]; then
+    CURL+=(--resolve "$RESOLVE_SPEC")
 fi
 
 fail() {
@@ -125,6 +136,10 @@ WS_ORIGIN="${WS_ORIGIN/https:/wss:}"
 WS_ARGS=("$WS_ORIGIN" "$LOFT_ID")
 if [ "$INSECURE" = 1 ]; then
     WS_ARGS+=(--insecure)
+fi
+if [ -n "$RESOLVE_SPEC" ]; then
+    # curl-syntaksen er host:port:ip — websocket-klienten skal have host + ip.
+    WS_ARGS+=(--connect-ip "${RESOLVE_SPEC##*:}" --sni "${RESOLVE_SPEC%%:*}")
 fi
 python3 "${SCRIPT_DIR}/smoke-ws.py" "${WS_ARGS[@]}" \
     || fail "WebSocket-gæsteflow mod ${WS_ORIGIN}/v1/ws/${LOFT_ID}"
