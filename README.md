@@ -134,12 +134,14 @@ cp .env.example .env
 
 # 3. Kør backend — migrationer kører automatisk ved start
 cd chat
-DATABASE_URL=postgres://postgres:postgres@localhost:5432 cargo run
+DATABASE_URL=postgres://postgres:postgres@localhost:5432 PORT=8081 cargo run
 ```
 
-Backenden lytter på `0.0.0.0:8080`. Frontend-siderne i `frontend/` er stadig
-de gamle chat-sider (M2 erstatter dem); til lokal afprøvning skal
-`frontend/config.js` pege på `http://localhost:8080` (API/WS).
+Backenden lytter på `0.0.0.0:$PORT` — brug **8081** lokalt, fordi en kørende
+IPFS-daemon (kubo) har sin gateway på `127.0.0.1:8080` som standard og dermed
+holder porten. `frontend/config.js` skal pege på samme port
+(`http://localhost:8081` og `ws://localhost:8081`); peger den på 8080, rammer
+browseren IPFS-gatewayen i stedet for API'et og får 404/400.
 
 ## Test
 
@@ -151,7 +153,7 @@ cd chat && cargo test --lib
 cd chat && DATABASE_URL=postgres://postgres:postgres@localhost:5432 cargo test
 
 # E2e (kræver kørende backend)
-cd e2e && TEST_API_URL=http://localhost:8080 npx playwright test
+cd e2e && TEST_API_URL=http://localhost:8081 npx playwright test
 
 # Smoke-test af et deployet miljø (REST + WebSocket + DB-rækken væk)
 ./scripts/smoke-test.sh https://loft.test.gihc.online --namespace loft-test
