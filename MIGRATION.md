@@ -36,9 +36,10 @@ Forudsætninger og platform-tilstand står i `../infra/MIGRATION.md` — vigtigs
    (test) og senere `loft.gihc.online` (prod). Frontend, REST (`/v1`) og
    WebSocket deler host, så CORS/CSP-par-koblingen forsvinder. `ALLOWED_ORIGIN`
    bevares kun til lokal udvikling.
-5. **coturn:** beholdes — WebRTC uden TURN fejler bag NAT. Kører som
-   `hostNetwork`-Deployment; firewall udvides i `infra/tofu/main.tf`:
-   TCP+UDP 3478 og UDP 49152–49200.
+5. **coturn:** flyttet til platformen (2026-09-12) — WebRTC uden TURN fejler
+   bag NAT, men der kan kun køre én coturn pr. node, så appen peger på
+   `turn.gihc.online` i `~/projects/infra` (ADR 0003, namespace `coturn`,
+   firewall TCP+UDP 3478 og UDP 49152–49200).
 6. **Postgres:** én lille instans pr. miljø-namespace — kun `lofts`-tabellen
    (id, navn, created_at, last_active). Deltagere, presence og signalering er
    in-memory → præcis 1 replica.
@@ -104,8 +105,9 @@ Konsekvenser for M4:
   `frontend/Dockerfile` (statisk nginx-image med `config.js` fra ConfigMap) er
   derfor en ny komponent i M2/M4, ikke en omskrivning af noget eksisterende.
 - **TURN-reglerne er ikke nye:** `docker-compose.prod.yml` havde allerede
-  coturn med porte 3478 (TCP+UDP) og 49152–49200/UDP; k3s-versionen flytter
-  blot containeren til et `hostNetwork`-pod med samme firewall-regler.
+  coturn med porte 3478 (TCP+UDP) og 49152–49200/UDP; k3s-versionen flyttede
+  containeren til et `hostNetwork`-pod, og instansen er siden flyttet videre til
+  platformen (`turn.gihc.online`) med de samme firewall-regler.
 
 ## Trin-for-trin
 
@@ -149,12 +151,12 @@ Konsekvenser for M4:
   `allowPrivilegeEscalation: false` bliver den ikke givet videre til processen
   (CapEff=0). Verificeret 2026-09-11.
 - **TURN er offentligt eksponeret:** firewall-reglerne (TCP+UDP 3478, UDP
-  49152–49200) har været åbne mod `0.0.0.0/0` siden 2026-07-04, så TURN er
-  tilgængeligt i samme øjeblik coturn-pod'en kører. `TURN_SECRET` ligger i
-  `config.js` og er dermed offentlig → alle kan udstede HMAC-credentials.
-  Modvægten er `--denied-peer-ip` for RFC1918/loopback/link-local/CGNAT og
-  kvoter (`--max-bps`, `--bps-capacity`, `--user-quota`, `--total-quota`).
-  Følg-op: udsted kortlivede credentials fra API'et i stedet.
+  49152–49200) har været åbne mod `0.0.0.0/0` siden 2026-07-04. `TURN_SECRET`
+  ligger i `config.js` og er dermed offentlig → alle kan udstede
+  HMAC-credentials. Modvægten er platformens `--denied-peer-ip` for
+  RFC1918/loopback/link-local/CGNAT og kvoter (`--max-bps`, `--bps-capacity`,
+  `--user-quota`, `--total-quota`). Følg-op: udsted kortlivede credentials fra
+  API'et i stedet.
 - **WebSocket-timeouts:** ingress-nginx `proxy-read-timeout` /
   `proxy-send-timeout` = 3600 på `/v1/ws/...` — forbindelsen er langlivet.
   `proxy-body-size` udgår når filoverførsel fjernes.

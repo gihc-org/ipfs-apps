@@ -31,20 +31,16 @@ Kopér blokken herunder som første besked til agenten:
 >   negotiation). `index.html` redirecter til loft.html.
 > - k8s: `k8s/test/` (namespace `loft-test`); GitHub Actions bygger
 >   `ghcr.io/gihc-org/loft`(+web) og kører e2e.
-> - coturn kører hærdet (non-root, read-only rootfs, no_new_privs, kun
->   `NET_BIND_SERVICE` i bounding-settet) og med `--denied-peer-ip` + kvoter.
-> - **coturn er på vej ud af dette repo**: den flyttes til platform-laget i
->   `~/projects/infra` som én delt instans på `turn.gihc.online` (se afsnittet
->   "Efter M4 — delt TURN flyttes til platformen" og infra-repoets TODO med
->   start-prompt). Indtil flytningen er gennemført, er coturn i `k8s/test`
->   den eneste instans, og prod-manifesterne må **ikke** deployes ved siden af.
+> - TURN er flyttet til platformen: `turn.gihc.online` (namespace `coturn` i
+>   `~/projects/infra`, ADR 0003), hærdet og med `--denied-peer-ip` + kvoter.
+>   Appen har ingen egen coturn længere — `config.js` peger på den fælles
+>   instans, og `TURN_SECRET` rendres fra `pass turn/static-auth-secret`.
 >
 > Næste opgaver, i denne rækkefølge:
 > 1. Manuel accepttest af testmiljøet med rigtige enheder (headset; gerne én
 >    enhed på mobildata så relay-stien bruges).
-> 2. Når infra-sessionen har flyttet coturn: peg `config.js` i `k8s/test` og
->    `k8s/prod` på `turn:turn.gihc.online:3478?transport=udp`, fjern
->    coturn-manifesterne fra appen, og kør `e2e/tests/turn.spec.ts` igen.
+> 2. Kør `e2e/tests/turn.spec.ts` mod den delte instans igen (flytningen er
+>    gennemført 2026-09-12; se `referater/` og infra-repoets referat).
 > 3. Prod-deploy af `loft.gihc.online` efter `runbooks/loft-deploy.md` (DNS
 >    via `scripts/create-dns-record.sh loft`, `pass insert
 >    loft/prod-postgres-password`, cert staging → prod). TURN-portene står
@@ -132,27 +128,28 @@ Kopér blokken herunder som første besked til agenten:
 - [x] TURN-relay-test (`e2e/tests/turn.spec.ts`, relay-only ICE, kørt grønt mod
       loft.test.gihc.online)
 
-## Efter M4 — delt TURN flyttes til platformen
+## Efter M4 — delt TURN flyttet til platformen (2026-09-12)
 
 Beslutning 2026-09-11: coturn hører ikke hjemme i app-repoet. Der kan kun køre
 én coturn på noden (to instanser binder begge 3478 via `SO_REUSEPORT` og deler
-trafikken tilfældigt), og flere WebRTC-apps skal kunne dele reliancen. Opgaven
-ligger nu i `~/projects/infra/TODO.md` under "Platform — delt TURN (coturn)",
-med start-prompt. Her i repoet er der kun tilbage at følge op:
+trafikken tilfældigt), og flere WebRTC-apps skal kunne dele reliancen. Flytningen
+er gennemført — platform-siden står i `~/projects/infra`
+(`docs/adr/0003-delt-turn-platform.md`, `k8s/coturn/`, `scripts/check-turn.sh`).
 
-- [ ] Peg `config.js` på `turn:turn.gihc.online:3478?transport=udp` i både
-      `k8s/test/configmap.yaml` og `k8s/prod/configmap.yaml`, og sæt
-      `TURN_SECRET` til det fælles secret fra `pass`
-- [ ] Fjern `k8s/test/deployment-coturn.yaml` og
+- [x] Peg `config.js` på `turn:turn.gihc.online:3478?transport=udp` i både
+      `k8s/test/configmap.yaml` og `k8s/prod/configmap.yaml`, med `TURN_SECRET`
+      fra `pass turn/static-auth-secret`
+- [x] Fjern `k8s/test/deployment-coturn.yaml` og
       `k8s/prod/deployment-coturn.yaml` samt `realm`/`external-ip`/`turn-secret`
       fra configmaps (de hører nu til platformen)
-- [ ] `kubectl delete deploy/loft-coturn -n loft-test` (og tilsvarende i
-      `loft-prod`, hvis det er deployet) så porten frigives til den delte instans
-- [ ] Opdater README (arkitekturdiagrammet viser coturn under appen),
-      MIGRATION og `runbooks/loft-deploy.md`, så de peger på den fælles
-      instans og `scripts/check-turn.sh` i infra
-- [ ] Kør `e2e/tests/turn.spec.ts` mod testmiljøet igen — den er den eneste
-      test der fanger en forkert `TURN_URL` efter flytningen
+- [x] `kubectl delete deploy/loft-coturn -n loft-test` — porten er frigivet til
+      den delte instans (`loft-prod` er ikke deployet)
+- [x] Opdater README, MIGRATION og `runbooks/loft-deploy.md`, så de peger på den
+      fælles instans og `scripts/check-turn.sh` i infra
+- [x] Kør `e2e/tests/turn.spec.ts` mod testmiljøet igen — kørt grøn mod
+      `turn.gihc.online` 2026-09-12 (`relay ok: alice=relay,relay bob=relay,relay`)
+      sammen med resten af suiten (5/5) og smoke-testen (18/18). Platformens egen
+      `check-turn.sh` er også grøn.
 
 ## M5 — Oprydning
 

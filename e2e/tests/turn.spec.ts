@@ -7,9 +7,12 @@ import { BrowserContext, Page, expect, test } from '@playwright/test';
 // Testen kaldes med miljøvariabler, så den kan køre mod ethvert miljø (og
 // springes over i CI, hvor der ikke er nogen TURN-server):
 //
-//   TURN_URL='turn:loft.test.gihc.online:3478?transport=udp' \
-//   TURN_SECRET="$(kubectl -n loft-test get cm loft-config -o jsonpath='{.data.turn-secret}')" \
+//   TURN_URL="$(~/projects/infra/scripts/turn-config.sh --url)" \
+//   TURN_SECRET="$(pass turn/static-auth-secret)" \
 //   npx playwright test tests/turn.spec.ts
+//
+// TURN er platformens delte instans (turn.gihc.online, ADR 0003 i infra) —
+// appen har ingen egen coturn, og hemmeligheden kommer fra `pass`.
 //
 // To selvstændige browser-kontekster forbinder med `iceTransportPolicy: 'relay'`,
 // så alle kandidater kommer fra coturn. Data-kanalen går derfor gennem

@@ -12,9 +12,12 @@ Forskelle fra test:
 | Host | `loft.test.gihc.online` | `loft.gihc.online` |
 | Namespace | `loft-test` | `loft-prod` |
 | TLS-secret | `loft-test-gihc-online-tls` | `loft-gihc-online-tls` |
-| coturn realm | `loft.test.gihc.online` | `loft.gihc.online` |
-| TURN-secret | test-placeholder | eget secret (sat i `configmap.yaml`) |
 | Image-tag | `:latest` (Always) | pinnet SHA-tag (IfNotPresent) |
+
+TURN er fælles for begge miljøer: begge `config.js` peger på
+`turn:turn.gihc.online:3478?transport=udp` med platformens secret
+(`pass turn/static-auth-secret`, ADR 0003 i `~/projects/infra`). Der er ingen
+egen coturn i prod-manifesterne — én instans pr. node er hele pointen.
 
 ## Før deploy
 
@@ -25,9 +28,9 @@ Forskelle fra test:
 3. Tjek at image-SHA'en i `deployment-api.yaml` og `deployment-web.yaml` er det
    tag CI har bygget på `trunk` (`curl -s
    https://ghcr.io/v2/gihc-org/loft/tags/list` med et anonymt token).
-4. `configmap.yaml` har allerede realm `loft.gihc.online` og et rigtigt
-   TURN-secret; rotér det kun hvis det er kompromitteret (husk begge felter i
-   filen).
+4. `configmap.yaml` peger allerede på platformens TURN. Hvis platformens
+   secret er roteret, skal `TURN_SECRET` opdateres her:
+   `~/projects/infra/scripts/turn-config.sh --config-js`.
 
 ## Apply
 

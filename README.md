@@ -31,12 +31,13 @@ Browser (loft.gihc.online — frontend + /v1 + WS på samme origin)
         └── k3s ingress-nginx ──► loft-api (Axum, Rust) ──► PostgreSQL
                                   │        │
                                   │        └── (lofts-tabel, TTL-cleanup)
-                                  └── coturn (hostNetwork: TURN til WebRTC)
+                                  └── turn.gihc.online (platformens delte coturn)
 ```
 
 Media går direkte browser-til-browser (mesh); serveren relayer kun signaler og
-ved aldrig, hvad der tales/ses. TURN (coturn) bruges kun når direkte forbindelse
-fejler bag NAT.
+ved aldrig, hvad der tales/ses. TURN bruges kun når direkte forbindelse fejler
+bag NAT — og den instans er platformens (`turn.gihc.online`), ikke appens, fordi
+der kun kan køre én coturn pr. node.
 
 ## Repo-struktur
 
@@ -158,9 +159,9 @@ cd e2e && TEST_API_URL=http://localhost:8081 npx playwright test
 # Smoke-test af et deployet miljø (REST + WebSocket + DB-rækken væk)
 ./scripts/smoke-test.sh https://loft.test.gihc.online --namespace loft-test
 
-# TURN-relay mod et deployet miljø (relay-only ICE gennem coturn)
-cd e2e && TURN_URL='turn:loft.test.gihc.online:3478?transport=udp' \
-  TURN_SECRET="$(kubectl -n loft-test get cm loft-config -o jsonpath='{.data.turn-secret}')" \
+# TURN-relay mod et deployet miljø (relay-only ICE gennem platformens coturn)
+cd e2e && TURN_URL="$(~/projects/infra/scripts/turn-config.sh --url)" \
+  TURN_SECRET="$(pass turn/static-auth-secret)" \
   BASE_URL=https://loft.test.gihc.online npx playwright test tests/turn.spec.ts
 ```
 
@@ -191,13 +192,14 @@ Planen står i [MIGRATION.md](MIGRATION.md). Kort fortalt:
 - Images: `ghcr.io/gihc-org/loft` (API) og `ghcr.io/gihc-org/loft-web`
   (frontend), bygget i GitHub Actions med SHA-tags.
 - Manifester: [k8s/test/](k8s/test/README.md) — namespace `loft-test`, postgres
-  + PVC, api/web, coturn (`hostNetwork`), ingress med WS-timeouts.
+  + PVC, api/web og ingress med WS-timeouts. TURN ligger i platformen
+  (`~/projects/infra`, namespace `coturn`).
 - Prod-manifester (forberedt, ikke deployet): [k8s/prod/](k8s/prod/README.md).
 - Trin-for-trin: [runbooks/loft-deploy.md](runbooks/loft-deploy.md) — DNS,
   secret, apply, cert (staging → prod), smoke-test, rollback.
 - Secrets: `pass` → `kubectl create secret loft-secrets` (ingen hemmeligheder
-  i git). `TURN_SECRET` er reelt offentlig (HMAC, 24 t TTL) og ligger i
-  ConfigMap for test.
+  i git). `TURN_SECRET` kommer fra platformens `pass turn/static-auth-secret`
+  (reelt offentlig, HMAC-baserede credentials) og rendres ind i `config.js`.
 - Historisk: indtil M4 blev image'et bygget på selve VPS'en af
   `docker compose … up -d --build` (intet registry) og frontenden lagt på
   IPFS bag DNSLink. M4 er derfor første gang der bygges og publiceres images i
@@ -210,11 +212,11 @@ Planen står i [MIGRATION.md](MIGRATION.md). Kort fortalt:
   hukommelsen under sessionen.
 - Rate limiting på loft-oprettelse (tower_governor, XFF-baseret).
 - Containerhærdning: API kører non-root (uid 10001) med read-only rootfs;
-  coturn kører som `nobody` med read-only rootfs, `no_new_privs` og kun
-  `NET_BIND_SERVICE` i bounding-settet.
-- TURN er eksponeret mod internettet, og `TURN_SECRET` er offentlig (den
-  ligger i frontendens `config.js`). Derfor afvises relayer til
-  RFC1918/loopback/link-local/CGNAT, og der er kvoter pr. session og i alt.
+  platformens coturn kører som `nobody` med read-only rootfs, `no_new_privs` og
+  kun `NET_BIND_SERVICE` i bounding-settet.
+- TURN er eksponeret mod internettet, og `TURN_SECRET` er offentlig (den ligger
+  i frontendens `config.js`). Modvægten er platformens `--denied-peer-ip` for
+  RFC1918/loopback/link-local/CGNAT og kvoter pr. session og i alt.
 - Signal-beskeder gemmes aldrig; mediestrømme er P2P og DTLS-krypterede.
 
 ## Roadmap

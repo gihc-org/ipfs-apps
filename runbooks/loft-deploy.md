@@ -42,28 +42,30 @@ dig +short loft.test.gihc.online                   # → 65.109.233.92
 Scriptet opretter `A loft.test` hos Simply.com. TTL er 3600, og serverens
 resolver er allerede rettet, så cert-manager's self-check slår hurtigt igennem.
 
-## 2. Firewall (TURN)
+## 2. TURN (platformens delte tjeneste)
 
-Reglerne ligger allerede i `~/projects/infra/tofu/main.tf`: **TCP+UDP 3478** og
-**UDP 49152–49200**. De er applied på `platform-firewall` (åbne mod
-`0.0.0.0/0` siden 2026-07-04), så TURN er offentligt tilgængeligt i samme
-øjeblik coturn-pod'en kører — der er ingen ekstra "åbn"-kommando. Bekræft
-reglerne med:
+Appen har **ingen egen coturn** længere. TURN er en delt platform-tjeneste i
+`~/projects/infra` (namespace `coturn`, ADR 0003): der kan kun køre én coturn på
+noden, fordi to instanser binder begge 3478 via `SO_REUSEPORT` og derefter
+fordeler trafikken tilfældigt.
 
-```bash
-cd ~/projects/infra/tofu && direnv allow && tofu plan   # forventet: no changes
-```
+Det betyder for deployet her:
 
-Uden de porte virker mesh-lyd/video stadig på samme netværk (STUN), men fejler
-bag NAT — det er først verificerbart med e2e fra to forskellige netværk.
+- `config.js` peger på `turn:turn.gihc.online:3478?transport=udp`.
+- `TURN_SECRET` skal være identisk med platformens
+  `pass turn/static-auth-secret`. Render linjerne med
 
-Misbrugsbeskyttelsen sidder i coturns args: `--denied-peer-ip` for
-RFC1918/loopback/link-local/CGNAT og kvoter (`--max-bps`, `--bps-capacity`,
-`--user-quota`, `--total-quota`). Baggrunden er at `TURN_SECRET` er offentlig
-(den ligger i `config.js`), så alle kan udstede credentials. Kvoterne skal
-tunes efter mesh-størrelsen: hver peer-forbindelse bruger én allocation, så
-`--user-quota=8` rækker til ca. 8 deltagere — hæv den (og `--total-quota`) hvis
-loftene vokser.
+  ```bash
+  ~/projects/infra/scripts/turn-config.sh --config-js
+  ```
+
+- Firewall-portene (TCP+UDP 3478, UDP 49152–49200) ejes af platformen og står
+  allerede åbne i `platform-firewall` — der er ingen "åbn"-kommando her.
+- Misbrugsbeskyttelsen (kvoter og `--denied-peer-ip`) ligger i platformens
+  `k8s/coturn/`-manifest. `TURN_SECRET` er reelt offentlig (den udleveres til
+  browseren), så kvoterne er modvægten — de skal hæves i infra, hvis loftene
+  vokser (hver peer-forbindelse i meshen bruger én allocation).
+- Platformen verificeres app-uafhængigt med `~/projects/infra/scripts/check-turn.sh`.
 
 ## 3. Secret `loft-secrets`
 
@@ -99,9 +101,9 @@ kubectl -n loft-test rollout status deploy/loft-web --timeout=180s
 kubectl -n loft-test get pods,svc,ingress
 ```
 
-`loft-postgres` og `loft-coturn` bruger `Recreate` (PVC henholdsvis hostNetwork),
-og API'et kører med én replica fordi presence/lofts-kanaler er in-memory —
-rolling updates ville droppe WebSocket-forbindelser.
+`loft-postgres` bruger `Recreate` (PVC), og API'et kører med én replica fordi
+presence/lofts-kanaler er in-memory — rolling updates ville droppe
+WebSocket-forbindelser. TURN-pod'en er flyttet til platformen (se trin 2).
 
 Migrationer kører automatisk i API'et ved start (`sqlx::migrate!`), så der er
 ingen separat Job.
@@ -144,9 +146,9 @@ bash scripts/smoke-test.sh https://loft.test.gihc.online --namespace loft-test
 # Playwright mod det deployede miljø (rigtige MediaStreams, falske enheder)
 cd e2e && npm run test:test
 
-# TURN-relay (relay-only ICE, to browser-kontekster gennem coturn)
-cd e2e && TURN_URL='turn:loft.test.gihc.online:3478?transport=udp' \
-  TURN_SECRET="$(kubectl -n loft-test get cm loft-config -o jsonpath='{.data.turn-secret}')" \
+# TURN-relay (relay-only ICE, to browser-kontekster gennem platformens coturn)
+cd e2e && TURN_URL="$(~/projects/infra/scripts/turn-config.sh --url)" \
+  TURN_SECRET="$(pass turn/static-auth-secret)" \
   BASE_URL=https://loft.test.gihc.online npx playwright test tests/turn.spec.ts
 ```
 

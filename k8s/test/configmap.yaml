@@ -5,15 +5,20 @@ metadata:
   namespace: loft-test
 data:
   # Frontend-konfiguration pr. miljø — mountes på /usr/share/nginx/html/config.js.
-  # TURN_SECRET er reelt offentlig (HMAC-baserede credentials, 24 t TTL) og
-  # deles med coturn via nøglen turn-secret nedenfor — hold de to i sync.
+  #
+  # TURN er en delt platform-tjeneste (namespace `coturn` i infra-repoet, se
+  # ADR 0003): der kan kun køre én coturn på noden, så appen har ingen egen
+  # instans. TURN_URL peger derfor på turn.gihc.online, og TURN_SECRET er
+  # rendret fra `pass turn/static-auth-secret` (platformens eneste kilde):
+  #
+  #   ../infra/scripts/turn-config.sh --config-js
+  #
+  # Værdien er reelt offentlig (den udleveres til browseren), så beskyttelsen
+  # er coturns kvoter og --denied-peer-ip, ikke hemmeligholdelse.
   config.js: |
     const API_URL = 'https://loft.test.gihc.online';
     const WS_URL  = 'wss://loft.test.gihc.online';
-    const TURN_URL = 'turn:loft.test.gihc.online:3478?transport=udp';
-    const TURN_SECRET = 'loft-test-turn-secret-change-me';
-  turn-secret: "loft-test-turn-secret-change-me"
-  realm: "loft.test.gihc.online"
-  external-ip: "65.109.233.92"
+    const TURN_URL = 'turn:turn.gihc.online:3478?transport=udp';
+    const TURN_SECRET = 'vTHgcs8cF54d6P04LK58gIz3hyQ1EXPw';
   allowed-origin: "https://loft.test.gihc.online"
   loft-ttl-hours: "168"
