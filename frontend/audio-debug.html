@@ -101,13 +101,20 @@
 
       <h3>Egen mikrofon (lokal loopback)</h3>
       <div class="row">
+        <label class="check"><input type="checkbox" id="micMonitor"> Afspil mikrofonen lokalt
+          (kan give hylen — slået fra betyder kun at capture aktiveres)</label>
+      </div>
+      <div class="row">
         <button id="micBtn">Start mikrofon</button>
         <button id="micMuteBtn" class="secondary" hidden>Sluk (mute)</button>
         <button id="micReleaseBtn" class="secondary" hidden>Frigiv (stop spor)</button>
       </div>
       <div class="state" id="micState">Ikke startet.</div>
-      <div class="hint">Frigiv slipper capture helt (som når et opkald afsluttes). Se om lyden
-        skifter tilbage til earpluggene, mens tonen i felt 1 kører.</div>
+      <div class="hint">A/B-test: kør tonen i felt 1 (lyt i earpluggene), tryk
+        <strong>Start mikrofon</strong> og lyt — flytter tonen sig? Tryk derefter
+        <strong>Frigiv (stop spor)</strong> og se om tonen kommer tilbage til
+        earpluggene. «Frigiv» slipper capture helt, som når et opkald afsluttes;
+        «Sluk (mute)» beholder capture, som Loft gjorde før.</div>
       <div id="micMedia" style="margin-top:8px"></div>
 
       <h3>Output-enhed (setSinkId)</h3>
@@ -305,6 +312,12 @@
         tone.audio.autoplay = true;
         tone.audio.playsInline = true;
         tone.audio.id = 'toneAudio';
+        // Log alle afspilningshændelser: hvis capture skifter audio-route, skal
+        // det fremgå om elementet stadig spiller (lyden flyttede sig) eller blev
+        // sat på pause/ended (lyden forsvandt).
+        for (const event of ['play', 'pause', 'ended']) {
+          tone.audio.addEventListener(event, () => log('fjernlyd: ' + event));
+        }
         $('toneMedia').appendChild(tone.audio);
 
         tone.pcB.ontrack = (e) => {
@@ -392,21 +405,30 @@
       }
       try {
         mic.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mic.audio = document.createElement('audio');
-        mic.audio.autoplay = true;
-        mic.audio.playsInline = true;
-        mic.audio.id = 'micAudio';
-        mic.audio.volume = 0.6;
-        mic.audio.srcObject = mic.stream;
-        $('micMedia').appendChild(mic.audio);
-        await mic.audio.play().catch((e) => fail('mic audio.play', e));
-        await applySinkTo(mic.audio);
+        if ($('micMonitor').checked) {
+          mic.audio = document.createElement('audio');
+          mic.audio.autoplay = true;
+          mic.audio.playsInline = true;
+          mic.audio.id = 'micAudio';
+          mic.audio.volume = 0.6;
+          mic.audio.srcObject = mic.stream;
+          $('micMedia').appendChild(mic.audio);
+          await mic.audio.play().catch((e) => fail('mic audio.play', e));
+          await applySinkTo(mic.audio);
+        }
         $('micBtn').hidden = true;
         $('micMuteBtn').hidden = false;
         $('micReleaseBtn').hidden = false;
         $('micMuteBtn').textContent = 'Sluk (mute)';
         $('micState').textContent = 'Mikrofon aktiv — spor: ' + mic.stream.getAudioTracks().length;
         log('mikrofon startet');
+        // A/B: start tonen automatisk, hvis den ikke kører — så hører man i
+        // samme øjeblik om capture flytter fjernlyden, og bagefter om "Frigiv"
+        // flytter den tilbage.
+        if (!tone.pcA) {
+          log('starter tone automatisk til A/B-test med capture');
+          await startTone();
+        }
         await refreshDevices();
       } catch (e) {
         $('micState').textContent = fail('getUserMedia(audio)', e);
