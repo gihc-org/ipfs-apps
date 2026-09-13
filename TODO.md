@@ -301,6 +301,29 @@ Næste skridt: verificér i det deployede miljø på telefonen — sluk mikrofon
 mens en anden deltager taler, og se om fjernlyden flytter til earpluggene.
 Kræver at ændringen er deployet til `loft-test`.
 
+### Telefon-måling 2: capture er synderen (bekræftet 2026-09-13)
+
+Samme telefon, nu `audio-debug.html` over https (midlertidigt kopieret ind i
+`loft-web`-pod'et):
+
+1. Tone uden capture → **earplugs** (også med videospor).
+2. Mens tonen kørte: mikrofon-capture aktiveret → **lyden forsvandt fra
+   earpluggene**, og det samme gjorde en podcast i en anden app. Routen sidder
+   altså fast i opkaldsprofil for hele telefonen — ikke kun for vores side.
+3. **«Frigiv (stop spor)» → tonen og podcasten kom tilbage til earpluggene.**
+
+Konklusion: det er capture-delen der flytter lyden, og routen kan genoprettes
+ved at slippe sporet. Derfor er fixet "sluk = slip capture" rigtigt; det er
+allerede i `loft.html` (og på testmiljøet via ad-hoc-kopien).
+
+Følgekonsekvens: fordi mikrofonen auto-starter ved join, får en Android-lytter
+fjernlyden ud af telefonens højttaler indtil mikrofonen slukkes. Derfor er "join
+muted" (mikrofonen tændes først når man selv vil tale) det næste, naturlige
+skridt — det er en produktbeslutning, ikke længere et teknisk spørgsmål.
+For en bruger der *taler* er der ingen klientside-vej: så længe capture er
+aktiv, vælger Android kommunikationsruten, og Firefox sætter ikke Bluetooth-
+headsettet som communication device.
+
 ### Diagnostikværktøj til telefonen
 
 `frontend/audio-debug.html` (åbnes på telefonen, fx
@@ -351,8 +374,11 @@ Testplan på telefonen (samme earplugs hele vejen):
       til SCO/opkaldsprofil når mikrofonen er aktiv (punkt 3 og 5–6)
       — **video er udelukket 2026-09-13** (tone med videospor gik til earpluggene);
       mikrofonen/capture er den tilbageværende variabel
-- [ ] Verificér på telefonen at "sluk mikrofon" (frigiv capture) flytter
-      fjernlyden tilbage til earpluggene — kræver deploy af frontend til loft-test
+- [x] Verificér på telefonen at frigivelse af capture flytter fjernlyden tilbage
+      til earpluggene — bekræftet i `audio-debug.html` 2026-09-13 (podcasten kom
+      tilbage). End-to-end i Loft med to deltagere mangler stadig.
+- [ ] Beslut "join muted": mikrofonen skal først tændes når man selv vil tale, så
+      en Android-lytter ikke ryger i opkaldsprofil ved join (produktbeslutning)
 - [x] Afprøv `setSinkId` på telefonen — afklaret 2026-09-13 uden telefon:
       API'et findes slet ikke på Android (MDN/Bugzilla), så denne vej er lukket
 - [ ] Hvis `setSinkId` ikke er en vej: overvej om mikrofonen skal frigives når
