@@ -63,9 +63,10 @@ Kopér blokken herunder som første besked til agenten:
 >   `npm run test:test:firefox` (kræver `npx playwright install firefox` én gang)
 >
 > Gotchas: `TEST_API_URL` uden `/v1`; `frontend/config.js` overskrives i k8s af
-> ConfigMap; e2e bruger sessionStorage-nøglen `loft.noAutoMic`; headless
-> Playwright spiller stadig testlyd — begge browsere er dæmpet i
-> `playwright.config.ts`.
+> ConfigMap; mikrofonen starter **ikke** ved join (se "Lyd-routing på
+> telefoner"), så e2e tænder den eksplicit og en peer-forbindelse etableres
+> først når nogen deler medier; headless Playwright spiller stadig testlyd —
+> begge browsere er dæmpet i `playwright.config.ts`.
 
 ## Branche og CI (status 2026-09-12)
 
@@ -377,8 +378,10 @@ Testplan på telefonen (samme earplugs hele vejen):
 - [x] Verificér på telefonen at frigivelse af capture flytter fjernlyden tilbage
       til earpluggene — bekræftet i `audio-debug.html` 2026-09-13 (podcasten kom
       tilbage). End-to-end i Loft med to deltagere mangler stadig.
-- [ ] Beslut "join muted": mikrofonen skal først tændes når man selv vil tale, så
-      en Android-lytter ikke ryger i opkaldsprofil ved join (produktbeslutning)
+- [x] "Join muted" indført 2026-09-13: mikrofonen starter ikke ved join, så en
+      Android-lytter beholder earpluggene; "🎙 Tænd mikrofon" er den primære
+      handling, og capture frigives igen ved sluk. e2e opdateret i begge browsere
+      (en peer-forbindelse etableres nu først når nogen deler medier)
 - [x] Afprøv `setSinkId` på telefonen — afklaret 2026-09-13 uden telefon:
       API'et findes slet ikke på Android (MDN/Bugzilla), så denne vej er lukket
 - [ ] Hvis `setSinkId` ikke er en vej: overvej om mikrofonen skal frigives når

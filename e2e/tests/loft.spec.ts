@@ -1,18 +1,23 @@
 import { expect, test, Browser, Page } from '@playwright/test';
 import { mockConfig, uniqueName } from './helpers';
 
-async function newParticipant(browser: Browser, noAutoMic = false) {
+async function newParticipant(browser: Browser) {
   // Firefox understøtter ikke Playwrights permission-grant; der auto-grantes i
   // stedet via firefoxUserPrefs i playwright.config.ts.
   const permissions =
     browser.browserType().name() === 'firefox' ? {} : { permissions: ['microphone', 'camera'] };
   const ctx = await browser.newContext(permissions);
-  if (noAutoMic) {
-    await ctx.addInitScript(() => sessionStorage.setItem('loft.noAutoMic', '1'));
-  }
   const page = await ctx.newPage();
   await mockConfig(page);
   return { ctx, page };
+}
+
+// Mikrofonen starter ikke ved join (capture flytter telefonens lydrute til
+// opkaldsprofil), og en peer-forbindelse etableres først når nogen deler medier
+// — testene tænder den derfor eksplicit.
+async function startMic(page: Page) {
+  await page.click('#micBtn');
+  await expect(page.locator('#micBtn')).toHaveText('Sluk mikrofon');
 }
 
 async function createLoft(page: Page, name: string): Promise<string> {
@@ -43,11 +48,13 @@ async function expectConnected(page: Page) {
 
 test('to deltagere forbinder — lyd når frem', async ({ browser }) => {
   const alice = await newParticipant(browser);
-  const bob = await newParticipant(browser, true);
+  const bob = await newParticipant(browser);
 
   const id = await createLoft(alice.page, uniqueName('alice'));
   await joinLoft(bob.page, uniqueName('bob'), id);
 
+  // Ingen medier ved join — forbindelsen etableres når Alice tænder mikrofonen.
+  await startMic(alice.page);
   await expectConnected(alice.page);
   await expectConnected(bob.page);
 
@@ -55,21 +62,21 @@ test('to deltagere forbinder — lyd når frem', async ({ browser }) => {
   await expect(alice.page.locator('#grid .participant-card')).toHaveCount(1);
   await expect(bob.page.locator('#grid .participant-card')).toHaveCount(1);
 
-  // Alice's auto-mikrofon etablerede forbindelsen — Bob modtager hendes lyd.
+  // Alice deler lyd — Bob modtager hendes stream.
   await expect(bob.page.locator('#grid audio')).toHaveCount(1, { timeout: 10000 });
 
   // Bob starter sin mikrofon sekventielt (ingen offer-glare) — Alice hører ham.
-  await bob.page.click('#micBtn');
-  await expect(bob.page.locator('#micBtn')).toHaveText('Sluk mikrofon');
+  await startMic(bob.page);
   await expect(alice.page.locator('#grid audio')).toHaveCount(1, { timeout: 10000 });
 });
 
 test('forlad → leave → rejoin', async ({ browser }) => {
   const alice = await newParticipant(browser);
-  const bob = await newParticipant(browser, true);
+  const bob = await newParticipant(browser);
 
   const id = await createLoft(alice.page, uniqueName('alice'));
   await joinLoft(bob.page, uniqueName('bob'), id);
+  await startMic(alice.page);
   await expectConnected(alice.page);
   await expectConnected(bob.page);
 
@@ -81,6 +88,7 @@ test('forlad → leave → rejoin', async ({ browser }) => {
   // Alice joiner igen via det samme link (navn/loft-id står stadig i lobbyen).
   await alice.page.click('#joinBtn');
   await expect(alice.page.locator('#room')).toBeVisible({ timeout: 10000 });
+  await startMic(alice.page);
   await expectConnected(alice.page);
   await expectConnected(bob.page);
   await expect(bob.page.locator('#grid .participant-card')).toHaveCount(1);
@@ -91,12 +99,13 @@ test('link åbnes fra frisk kontekst (ny deltager)', async ({ browser }) => {
   const id = await createLoft(alice.page, uniqueName('alice'));
 
   const origin = await alice.page.evaluate(() => location.origin);
-  const carol = await newParticipant(browser, true);
+  const carol = await newParticipant(browser);
   await carol.page.goto(`${origin}/loft.html?id=${id}`);
   await carol.page.fill('#nameInput', uniqueName('carol'));
   await carol.page.click('#joinBtn');
   await expect(carol.page.locator('#room')).toBeVisible({ timeout: 10000 });
 
+  await startMic(alice.page);
   await expectConnected(alice.page);
   await expectConnected(carol.page);
   await expect(alice.page.locator('#grid .participant-card')).toHaveCount(1);
@@ -105,10 +114,11 @@ test('link åbnes fra frisk kontekst (ny deltager)', async ({ browser }) => {
 
 test('skærmdeling når frem (fake stream)', async ({ browser }) => {
   const alice = await newParticipant(browser);
-  const bob = await newParticipant(browser, true);
+  const bob = await newParticipant(browser);
 
   const id = await createLoft(alice.page, uniqueName('alice'));
   await joinLoft(bob.page, uniqueName('bob'), id);
+  await startMic(alice.page);
   await expectConnected(alice.page);
   await expectConnected(bob.page);
 
@@ -133,15 +143,16 @@ test('skærmdeling når frem (fake stream)', async ({ browser }) => {
 // audiooutput-enheder (desktop Firefox/Chromium — ikke Android).
 test('lydudgang kan vælges og sættes på fjernlyden (setSinkId)', async ({ browser }) => {
   const alice = await newParticipant(browser);
-  const bob = await newParticipant(browser, true);
+  const bob = await newParticipant(browser);
 
   const id = await createLoft(alice.page, uniqueName('alice'));
   await joinLoft(bob.page, uniqueName('bob'), id);
+  await startMic(alice.page);
+  // Bobs mikrofon giver tilladelsen der gør audiooutput-listen synlig, og
+  // etablerer samtidig forbindelsen (Alice deler lyd, han modtager den).
+  await startMic(bob.page);
   await expectConnected(alice.page);
   await expectConnected(bob.page);
-
-  // Bob får først output-listen når mikrofonen (og dermed tilladelsen) er der.
-  await bob.page.click('#micBtn');
   await expect(bob.page.locator('#grid audio')).toHaveCount(1, { timeout: 10000 });
 
   // Enhedslisten fyldes asynkront efter tilladelsen — vent kort på den, men
@@ -181,21 +192,21 @@ test('lydudgang kan vælges og sættes på fjernlyden (setSinkId)', async ({ bro
 // skal derfor frigive sporet (kill switch), ikke bare sætte enabled=false.
 test('sluk mikrofon frigiver capture og kan tændes igen', async ({ browser }) => {
   const alice = await newParticipant(browser);
-  const bob = await newParticipant(browser, true);
+  const bob = await newParticipant(browser);
 
   const id = await createLoft(alice.page, uniqueName('alice'));
   await joinLoft(bob.page, uniqueName('bob'), id);
+  await startMic(alice.page);
   await expectConnected(alice.page);
   await expectConnected(bob.page);
 
-  await bob.page.click('#micBtn');
-  await expect(bob.page.locator('#micBtn')).toHaveText('Sluk mikrofon');
+  await startMic(bob.page);
   expect((await bob.page.evaluate(() => (window as any).__loftDebug())).micHasStream).toBe(true);
   await expect(alice.page.locator('#grid .participant-card .badges')).toContainText('🎙');
 
   // Sluk = sporet stoppes og sendes ikke længere; forbindelsen består.
   await bob.page.click('#micBtn');
-  await expect(bob.page.locator('#micBtn')).toHaveText('Tænd mikrofon');
+  await expect(bob.page.locator('#micBtn')).toContainText('Tænd mikrofon');
   const released = await bob.page.evaluate(() => (window as any).__loftDebug());
   expect(released.micOn).toBe(false);
   expect(released.micHasStream).toBe(false);

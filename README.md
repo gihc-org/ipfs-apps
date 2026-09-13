@@ -194,6 +194,15 @@ mekanismen i stedet adfærd: **"Sluk mikrofon" frigiver capture helt**
 audio-mode i kommunikationstilstand så længe et mikrofon-spor er aktivt. Målingen
 bag står i [TODO.md](TODO.md#telefon-måling-2026-09-13-android-15-firefox-155).
 
+Af samme grund **starter mikrofonen ikke ved join** ("join muted"): et aktivt
+capture flytter hele telefonens medierute til opkaldsprofil — også for andre
+apps (en podcast bliver tavs) — og fjernlyden ender i telefonens højttaler.
+Mikrofonen tændes med **🎙 Tænd mikrofon**, og et tryk på **Sluk mikrofon**
+frigiver sporet igen, hvorefter lyden er tilbage i earpluggene. Mens man taler,
+vælger Android stadig kommunikationsruten; det er en platformsegenskab, ikke
+noget frontenden kan omgå (Firefox sætter ikke Bluetooth-headsettet som
+communication device).
+
 ```bash
 # Kun diagnostik-tests (ingen backend nødvendig)
 cd e2e && npx playwright test tests/audio-debug.spec.ts

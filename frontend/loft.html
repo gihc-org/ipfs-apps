@@ -197,7 +197,6 @@
       micOn: false,
       camOn: false,
       screenOn: false,
-      micStarted: false,
       leaving: false,
       retryTimer: null,
       retryDelay: 1000,
@@ -445,8 +444,10 @@
       }
 
       disableControls(false);
-      setStatus(`Deltager i “${state.loftName}” — ${msg.participants.length} i loftet`);
-      autoStartMic();
+      setStatus(
+        `Deltager i “${state.loftName}” — ${msg.participants.length} i loftet. ` +
+        'Klik “Tænd mikrofon” for at tale.',
+      );
     }
 
     function attachExistingMedia() {
@@ -562,7 +563,7 @@
     }
 
     function updateControlButtons() {
-      micBtn.textContent = state.micOn ? 'Sluk mikrofon' : 'Tænd mikrofon';
+      micBtn.textContent = state.micOn ? 'Sluk mikrofon' : '🎙 Tænd mikrofon';
       micBtn.classList.toggle('active', state.micOn);
       camBtn.textContent = state.camOn ? 'Sluk kamera' : 'Tænd kamera';
       camBtn.classList.toggle('active', state.camOn);
@@ -633,25 +634,6 @@
       else localStorage.removeItem(SINK_KEY);
       for (const cell of state.cells.values()) {
         if (cell.audio) applySink(cell.audio);
-      }
-    }
-
-    async function autoStartMic() {
-      // E2e deaktiverer auto-mic (sessionStorage) for at undgå samtidige
-      // offers mellem to nye deltagere — og starter medier sekventielt.
-      if (state.micStarted || sessionStorage.getItem('loft.noAutoMic') === '1') return;
-      state.micStarted = true;
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        state.micStream = stream;
-        state.micOn = true;
-        if (state.rtc) state.rtc.addMedia('mic', stream);
-        updateControlButtons();
-        broadcastMediaState();
-        refreshOutputs();
-        setStatus(`Lyd er tændt — du deltager som ${state.name}`);
-      } catch (_) {
-        setStatus('Kunne ikke starte mikrofonen automatisk — klik “Tænd mikrofon”', true);
       }
     }
 
@@ -835,7 +817,7 @@
       if (state.micStream) state.micStream.getTracks().forEach((t) => t.stop());
       if (state.camStream) state.camStream.getTracks().forEach((t) => t.stop());
       state.micStream = state.camStream = null;
-      state.micOn = state.camOn = state.screenOn = state.micStarted = false;
+      state.micOn = state.camOn = state.screenOn = false;
       if (clearLoft) {
         localStorage.removeItem(ownerKey(state.loftId));
         state.loftId = state.loftName = null;
