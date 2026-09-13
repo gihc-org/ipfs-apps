@@ -230,5 +230,8 @@ Se [TODO.md](TODO.md):
 - **M1 (færdig):** backend — lofts, WS-protokol, /healthz, TTL, non-root image
 - **M2 (færdig):** frontend — `loft.html` + `rtc.js`-mesh, deling/invite
 - **M3 (færdig):** Playwright-e2e + CI
-- **M4 (i gang):** k3s-deploy af test-miljø
+- **M4 (færdig):** k3s-deploy af test-miljø — inkl. accepteret relay-sti mod
+  platformens delte TURN (`turn.gihc.online`)
 - **M5:** oprydning af chat-stak (compose/ansible/caddy/IPFS) og gamle domæner
+- **Åbent:** lyd-routing på telefoner (Bluetooth-earplugs vs. højttaler) og
+  prod-deploy — se [TODO.md](TODO.md)

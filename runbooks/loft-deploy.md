@@ -194,9 +194,10 @@ gamle chat-records.
 
 - **`GET /healthz` ligger på API'et**, ikke på web-frontenden — ingressen har
   en eksplicit `/healthz`-rute (ellers svarer nginx-frontenden 404).
-- **TURN_SECRET i ConfigMap'en** er reelt offentlig (HMAC-credentials med
-  24 t TTL) og skal holdes i sync mellem `config.js` og `turn-secret` i
-  [k8s/test/configmap.yaml](../k8s/test/configmap.yaml).
+- **TURN_SECRET i ConfigMap'en** er reelt offentlig (HMAC-credentials) og er
+  rendret fra platformens `pass turn/static-auth-secret` — hold den i sync med
+  [k8s/test/configmap.yaml](../k8s/test/configmap.yaml) via
+  `~/projects/infra/scripts/turn-config.sh --config-js`, hvis den roteres.
 - **`frontend/config.js` overskrives** i k8s af ConfigMap'en — ændringer i
   repo-filen påvirker kun lokal udvikling.
 - **`TEST_API_URL` uden `/v1`** i e2e; `BASE_URL` peger på frontenden.
@@ -252,19 +253,20 @@ Verifikation:
 ```bash
 bash scripts/smoke-test.sh https://loft.gihc.online --namespace loft-prod
 cd e2e && npm run test:beta      # sætter BASE_URL/TEST_API_URL til prod
-# TURN-relay mod prod (samme test som test, med prod-secret):
-cd e2e && TURN_URL='turn:loft.gihc.online:3478?transport=udp' \
-  TURN_SECRET="$(kubectl -n loft-prod get cm loft-config -o jsonpath='{.data.turn-secret}')" \
+# TURN-relay mod prod (samme test som test — TURN er platformens, ikke appens):
+cd e2e && TURN_URL="$(~/projects/infra/scripts/turn-config.sh --url)" \
+  TURN_SECRET="$(pass turn/static-auth-secret)" \
   BASE_URL=https://loft.gihc.online npx playwright test tests/turn.spec.ts
 ```
 
-**TURN-secretet** ligger i `k8s/prod/configmap.yaml` (både `config.js` og
-`turn-secret`) og er — som i test — reelt offentligt. Roterer du det, skal begge
-felter opdateres og coturn-genstartes:
+**TURN-secretet** er platformens (`pass turn/static-auth-secret`) og står kun i
+`config.js` i `k8s/prod/configmap.yaml`. Roterer du det i `infra`, hentes de nye
+linjer og web-frontenden genstartes — coturn kører i platformen, ikke her:
 
 ```bash
+~/projects/infra/scripts/turn-config.sh --config-js
 kubectl apply -f k8s/prod/configmap.yaml
-kubectl -n loft-prod rollout restart deploy/loft-coturn deploy/loft-web
+kubectl -n loft-prod rollout restart deploy/loft-web
 ```
 
 Rydder man testmiljøet senere, er det `kubectl delete namespace loft-test` plus

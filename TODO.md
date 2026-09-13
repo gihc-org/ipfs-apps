@@ -13,9 +13,10 @@ genbruges.
 
 Kopér blokken herunder som første besked til agenten:
 
-> Fortsæt arbejdet på **Loft**. Branchen `feat/loft-k3s-refocus` er merget til
-> `trunk` (M0–M4 færdige): testmiljøet kører på `loft.test.gihc.online` med
-> hærdet coturn, smoke-test og e2e (inkl. TURN-relay) grønt.
+> Fortsæt arbejdet på **Loft** (M0–M4 færdige). Testmiljøet kører på
+> `loft.test.gihc.online`. Arbejdet ligger i commits på
+> `feat/loft-k3s-refocus`, som **ikke** er merget til `trunk` eller pushet
+> endnu — se afsnittet "Branche og CI" nedenfor.
 >
 > Læs først `README.md`, `MIGRATION.md`, `TODO.md` og ADR-drafts
 > `0027-loft-link-rooms.md` + `0028-loft-group-mesh.md`. AGENTS.md's
@@ -29,18 +30,24 @@ Kopér blokken herunder som første besked til agenten:
 >   Migrationer kører automatisk ved start.
 > - Frontend: `frontend/loft.html` + `frontend/rtc.js` (mesh, perfect
 >   negotiation). `index.html` redirecter til loft.html.
-> - k8s: `k8s/test/` (namespace `loft-test`); GitHub Actions bygger
->   `ghcr.io/gihc-org/loft`(+web) og kører e2e.
+> - k8s: `k8s/test/` (namespace `loft-test`) — postgres + PVC, api, web og
+>   ingress. Prod-manifesterne i `k8s/prod/` er forberedt (pinnet SHA), ikke
+>   deployet.
 > - TURN er flyttet til platformen: `turn.gihc.online` (namespace `coturn` i
 >   `~/projects/infra`, ADR 0003), hærdet og med `--denied-peer-ip` + kvoter.
 >   Appen har ingen egen coturn længere — `config.js` peger på den fælles
 >   instans, og `TURN_SECRET` rendres fra `pass turn/static-auth-secret`.
+> - e2e kører mod det deployede miljø i **både Chromium og Firefox**
+>   (`npm run test:test` / `npm run test:test:firefox`, 6/6 hver 2026-09-12).
 >
 > Næste opgaver, i denne rækkefølge:
-> 1. Manuel accepttest af testmiljøet med rigtige enheder (headset; gerne én
->    enhed på mobildata så relay-stien bruges).
-> 2. Kør `e2e/tests/turn.spec.ts` mod den delte instans igen (flytningen er
->    gennemført 2026-09-12; se `referater/` og infra-repoets referat).
+> 1. Åbent fund: lyd-routing på telefoner — WebRTC-lyden kom ud af telefonens
+>    højttaler i stedet for Bluetooth-earpluggene (podcast går fint i
+>    earpluggene). Start med at køre Google Meet i Firefox på samme telefon:
+>    se afsnittet "Lyd-routing på telefoner".
+> 2. Tag stilling til grenen: push `feat/loft-k3s-refocus` og merge til `trunk`
+>    (CI bygger kun på push til `trunk`, og Actions læser workflows fra default
+>    branch), eller fortsæt på grenen.
 > 3. Prod-deploy af `loft.gihc.online` efter `runbooks/loft-deploy.md` (DNS
 >    via `scripts/create-dns-record.sh loft`, `pass insert
 >    loft/prod-postgres-password`, cert staging → prod). TURN-portene står
@@ -52,9 +59,23 @@ Kopér blokken herunder som første besked til agenten:
 > - Unit: `cd chat && cargo test --lib`
 > - Integration: `cd chat && DATABASE_URL=postgres://postgres:postgres@localhost:5432 cargo test`
 > - E2e (backend kørende): `cd e2e && TEST_API_URL=http://localhost:8081 npx playwright test`
+> - E2e mod deployet miljø: `npm run test:test` (Chromium) og
+>   `npm run test:test:firefox` (kræver `npx playwright install firefox` én gang)
 >
 > Gotchas: `TEST_API_URL` uden `/v1`; `frontend/config.js` overskrives i k8s af
-> ConfigMap; e2e bruger sessionStorage-nøglen `loft.noAutoMic`.
+> ConfigMap; e2e bruger sessionStorage-nøglen `loft.noAutoMic`; headless
+> Playwright spiller stadig testlyd — begge browsere er dæmpet i
+> `playwright.config.ts`.
+
+## Branche og CI (status 2026-09-12)
+
+- Alt arbejdet ligger i commits på `feat/loft-k3s-refocus`, flere commits foran
+  `origin/trunk` (der stadig står på `f83722c`). Intet er pushet.
+- `.github/workflows/build.yml` bygger kun ved push til `trunk`, og GitHub
+  Actions læser workflows fra default branch. Før grenen er pushet/merget,
+  bygges der altså ingen nye images — testmiljøet kører på `:latest` fra det
+  sidste build, mens `k8s/prod/` er pinnet til `f83722c`.
+- Derfor: beslut om grenen (punkt 2 i start-prompten) før et prod-deploy.
 
 ## M0 — Fundament (dokumentation)
 
@@ -102,17 +123,21 @@ Kopér blokken herunder som første besked til agenten:
 - [x] E2e-jobb i GitHub Actions (postgres + backend + Chromium)
 - [x] GHCR-pakker public — pakker pushet af Actions med `GITHUB_TOKEN` arver
       repoets synlighed, så `loft`/`loft-web` kan hentes anonymt
-- [x] E2e kører mod `loft.test.gihc.online` før prod-promote (5/5: fire
-      loft-tests + TURN-relay, 2026-09-11)
+- [x] E2e kører mod `loft.test.gihc.online` før prod-promote — 6/6 i både
+      Chromium og Firefox 2026-09-12 (fire loft-tests, TURN-relay mellem to
+      klienter og et tjek af at den deployede sides egen `config.js` giver en
+      relay-kandidat)
 
 ## M4 — k3s deploy (test-miljø)
 
 - [x] A-record for `loft.test.gihc.online` via `scripts/create-dns-record.sh`
 - [x] Secret `loft-secrets` i `loft-test` (postgres-password, database-url) —
       password genereret og gemt i `pass` som `loft/postgres-password`
-- [x] Apply `k8s/test/` (postgres, api, web, ingress, coturn) — kørende
+- [x] Apply `k8s/test/` (postgres, api, web, ingress) — kørende. coturn blev
+      først deployet her og er siden flyttet til platformen (se nedenfor)
 - [x] Firewall i `infra/tofu/main.tf`: TCP+UDP 3478, UDP 49152–49200 — lagt
-      ind 2026-08-01; verificér med `tofu plan` i `~/projects/infra/tofu`
+      ind 2026-08-01 (ejes nu af platformen sammen med coturn; TURN-portene er
+      ikke app-specifikke længere)
 - [x] `letsencrypt-staging` → verificér cert → `letsencrypt-prod` (betroet
       cert, `curl` uden `-k` giver 200)
 - [x] Smoke-test omskrevet til `kubectl exec` + gæste-loft-flow
@@ -121,14 +146,15 @@ Kopér blokken herunder som første besked til agenten:
 - [x] Ingress-rute for `/healthz` (lå ellers hos web-frontenden → 404)
 - [x] Runbook: `runbooks/loft-deploy.md` (DNS → secret → apply → cert → test)
 - [x] coturn hærdet: non-root, read-only rootfs, no_new_privs, minimal
-      capability-bounding-set (`add: ["NET_BIND_SERVICE"]`)
+      capability-bounding-set (`add: ["NET_BIND_SERVICE"]`) — hærdningen fulgte
+      med til platformen 2026-09-12
 - [x] TURN-misbrugsbeskyttelse: `--denied-peer-ip` for private/loopback/
       link-local/CGNAT + kvoter (`max-bps`, `bps-capacity`, `user-quota`,
-      `total-quota`, `stale-nonce`)
+      `total-quota`, `stale-nonce`) — ligeledes flyttet til platformen
 - [x] TURN-relay-test (`e2e/tests/turn.spec.ts`, relay-only ICE, kørt grønt mod
       loft.test.gihc.online)
 
-## Efter M4 — delt TURN flyttet til platformen (2026-09-12)
+## Efter M4 — delt TURN flyttet til platformen (afsluttet 2026-09-12)
 
 Beslutning 2026-09-11: coturn hører ikke hjemme i app-repoet. Der kan kun køre
 én coturn på noden (to instanser binder begge 3478 via `SO_REUSEPORT` og deler
@@ -147,9 +173,11 @@ er gennemført — platform-siden står i `~/projects/infra`
 - [x] Opdater README, MIGRATION og `runbooks/loft-deploy.md`, så de peger på den
       fælles instans og `scripts/check-turn.sh` i infra
 - [x] Kør `e2e/tests/turn.spec.ts` mod testmiljøet igen — kørt grøn mod
-      `turn.gihc.online` 2026-09-12 (`relay ok: alice=relay,relay bob=relay,relay`)
-      sammen med resten af suiten (5/5) og smoke-testen (18/18). Platformens egen
-      `check-turn.sh` er også grøn.
+      `turn.gihc.online` 2026-09-12 (`valgt pair: relay/relay` i både Chromium
+      og Firefox) sammen med resten af suiten (6/6 i hver browser) og
+      smoke-testen (18/18). Platformens egen `check-turn.sh` er også grøn.
+- [x] Relay-stien bekræftet manuelt af brugeren (telefon på mobildata). Det gav
+      fundet om lyd-routing — se afsnittet nedenfor.
 
 ## M5 — Oprydning
 
@@ -173,8 +201,11 @@ er gennemført — platform-siden står i `~/projects/infra`
 - [ ] Udsted TURN-credentials i API'et (fx `GET /v1/ice`) med kort TTL, så
       `TURN_SECRET` ikke længere ligger i frontendens `config.js` — HMAC'en
       hører hjemme server-side
-- [ ] Overvåg coturns allocations/båndbredde — flyttet til
-      `~/projects/infra/TODO.md`, da instansen bliver delt
+- [x] Overvåg coturns allocations/båndbredde — flyttet til platformen, som nu
+      eksponerer Prometheus-metrics (`turn_total_allocations`,
+      `turn_unauthenticated_401_requests`, `turn_auth_credential_failures` …)
+      på `coturn-metrics.coturn.svc.cluster.local:9641`. Der mangler kun en
+      scraper i clusteret (infra-opgave)
 - [ ] CSP: `default-src 'self'`, kamera/mikrofon via `Permissions-Policy`,
       ingen tredjeparts-scripts (Turnstile udgår)
 - [ ] Containerhærdning: non-root, read-only fs, `no-new-privileges`
@@ -192,6 +223,9 @@ kommunikationsenhed for WebRTC.
 - [ ] Afklar om det er Firefox-specifikt: kør Google Meet i **Firefox** på samme
       telefon med samme earplugs (Meet er ren WebRTC). Landet lyden i earpluggene
       der, er der noget i vores frontend; gør den ikke, er det Firefox/Android.
+- [ ] Tjek om det forsvinder uden kamera/skærmdeling (Chrome/Firefox bruger
+      speakerphone-tilstand i video-sessioner) og om earpluggene skifter til
+      SCO/opkaldsprofil, når mikrofonen tændes.
 - [ ] Afprøv om `HTMLMediaElement.setSinkId()` kan tvinge fjern-lyden over på
       earpluggene. Desktop-Firefox 148 har API'et (verificeret 2026-09-12),
       `AudioContext.setSinkId` findes kun i Chromium — og på Firefox til Android
