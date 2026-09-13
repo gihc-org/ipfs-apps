@@ -188,6 +188,12 @@ både har `HTMLMediaElement.setSinkId` og eksponerer mindst én `audiooutput`-en
 (desktop-Firefox viser dem først efter mikrofon-tilladelse, Android typisk slet
 ikke). Valget gemmes i `localStorage` under `loft.sinkId`.
 
+På Android, hvor der ikke findes noget output-vælger-API (se TODO), er
+mekanismen i stedet adfærd: **"Sluk mikrofon" frigiver capture helt**
+(`track.stop()` og sporet fjernes fra peer-forbindelserne), fordi Android holder
+audio-mode i kommunikationstilstand så længe et mikrofon-spor er aktivt. Målingen
+bag står i [TODO.md](TODO.md#telefon-måling-2026-09-13-android-15-firefox-155).
+
 ```bash
 # Kun diagnostik-tests (ingen backend nødvendig)
 cd e2e && npx playwright test tests/audio-debug.spec.ts

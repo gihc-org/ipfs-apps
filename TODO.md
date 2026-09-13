@@ -282,6 +282,25 @@ Bemærk også: `[SecureContext]` betyder at hele API'et er skjult over http — 
 første telefon-rapport ("setSinkId findes IKKE") kan derfor ikke bruges som
 bevis i sig selv; kildekoden ovenfor er beviset.
 
+### Telefon-måling 2026-09-13 (Android 15, Firefox 155)
+
+`audio-debug.html` åbnet over LAN (http — ingen mikrofon, ingen tilladelser):
+
+- Tone **uden** videospor → lyd i **earpluggene** ✅
+- Tone **med** videospor → lyd i **earpluggene** ✅
+
+Altså: fjernlyd gennem WebRTC alene ruter korrekt på denne telefon, og
+video-/speakerphone-tilstand er udelukket som årsag. Tilbage er capture-delen:
+Android holder audio-mode i kommunikationstilstand så længe et mikrofon-spor er
+aktivt. Konsekvens i frontenden: "sluk mikrofon" friger nu sporet helt
+(`track.stop()` + fjern fra peer-forbindelserne) i stedet for `enabled = false`
+— det er både den sandsynlige fix og det mest ærlige "sluk" (browseren optager
+intet mens knappen siger slukket). e2e dækker frigivelse og genoptagelse.
+
+Næste skridt: verificér i det deployede miljø på telefonen — sluk mikrofonen
+mens en anden deltager taler, og se om fjernlyden flytter til earpluggene.
+Kræver at ændringen er deployet til `loft-test`.
+
 ### Diagnostikværktøj til telefonen
 
 `frontend/audio-debug.html` (åbnes på telefonen, fx
@@ -330,6 +349,10 @@ Testplan på telefonen (samme earplugs hele vejen):
       brug WebRTC-lydeksemplet, ikke Meet)
 - [ ] Tjek om det forsvinder uden kamera/skærmdeling, og om earpluggene skifter
       til SCO/opkaldsprofil når mikrofonen er aktiv (punkt 3 og 5–6)
+      — **video er udelukket 2026-09-13** (tone med videospor gik til earpluggene);
+      mikrofonen/capture er den tilbageværende variabel
+- [ ] Verificér på telefonen at "sluk mikrofon" (frigiv capture) flytter
+      fjernlyden tilbage til earpluggene — kræver deploy af frontend til loft-test
 - [x] Afprøv `setSinkId` på telefonen — afklaret 2026-09-13 uden telefon:
       API'et findes slet ikke på Android (MDN/Bugzilla), så denne vej er lukket
 - [ ] Hvis `setSinkId` ikke er en vej: overvej om mikrofonen skal frigives når

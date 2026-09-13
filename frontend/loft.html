@@ -279,6 +279,7 @@
         selfId: state.selfId,
         peers,
         micOn: state.micOn,
+        micHasStream: Boolean(state.micStream),
         screenOn: state.screenOn,
         sinkSupported: canSetSinkId,
         sinkId: state.sinkId,
@@ -656,7 +657,10 @@
 
     async function toggleMic() {
       const wantOn = !state.micOn;
-      if (wantOn && !state.micStream) {
+      if (!wantOn) {
+        releaseMic();
+        setStatus('Mikrofon slukket — optagelsen er frigivet');
+      } else if (!state.micStream) {
         try {
           state.micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
           if (state.rtc) state.rtc.addMedia('mic', state.micStream);
@@ -666,12 +670,23 @@
           return;
         }
       }
-      if (state.micStream) {
-        state.micStream.getAudioTracks().forEach((t) => { t.enabled = wantOn; });
-      }
       state.micOn = wantOn;
       updateControlButtons();
       broadcastMediaState();
+    }
+
+    // Sluk = slip capture helt (stop sporene og fjern dem fra peer-forbindelserne).
+    //
+    // Fund 2026-09-13: fjernlyd gennem WebRTC alene lander i Bluetooth-earpluggene
+    // (også med videospor) — det er capture-delen der flytter lyden. Android holder
+    // audio-mode i kommunikationstilstand så længe et mikrofon-spor er aktivt, så
+    // track.enabled=false er ikke nok: sporet skal stoppes. Det er samtidig det
+    // mest ærlige "sluk": mens knappen siger slukket, optager browseren intet.
+    function releaseMic() {
+      if (state.rtc) state.rtc.removeMedia('mic');
+      if (state.micStream) state.micStream.getTracks().forEach((t) => t.stop());
+      state.micStream = null;
+      state.micOn = false;
     }
 
     async function toggleCam() {

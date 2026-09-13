@@ -175,3 +175,38 @@ test('lydudgang kan vælges og sættes på fjernlyden (setSinkId)', async ({ bro
     { timeout: 5000 },
   );
 });
+
+// Fund 2026-09-13: fjernlyd gennem WebRTC alene lander i earpluggene, også med
+// videospor — det er mikrofonen/capture der flytter lyden på Android. Sluk
+// skal derfor frigive sporet (kill switch), ikke bare sætte enabled=false.
+test('sluk mikrofon frigiver capture og kan tændes igen', async ({ browser }) => {
+  const alice = await newParticipant(browser);
+  const bob = await newParticipant(browser, true);
+
+  const id = await createLoft(alice.page, uniqueName('alice'));
+  await joinLoft(bob.page, uniqueName('bob'), id);
+  await expectConnected(alice.page);
+  await expectConnected(bob.page);
+
+  await bob.page.click('#micBtn');
+  await expect(bob.page.locator('#micBtn')).toHaveText('Sluk mikrofon');
+  expect((await bob.page.evaluate(() => (window as any).__loftDebug())).micHasStream).toBe(true);
+  await expect(alice.page.locator('#grid .participant-card .badges')).toContainText('🎙');
+
+  // Sluk = sporet stoppes og sendes ikke længere; forbindelsen består.
+  await bob.page.click('#micBtn');
+  await expect(bob.page.locator('#micBtn')).toHaveText('Tænd mikrofon');
+  const released = await bob.page.evaluate(() => (window as any).__loftDebug());
+  expect(released.micOn).toBe(false);
+  expect(released.micHasStream).toBe(false);
+  await expectConnected(alice.page);
+  await expect(alice.page.locator('#grid .participant-card .badges')).toContainText('🚫🎙');
+
+  // Tænd igen: nyt capture + renegotiation, og Alice hører Bob som før.
+  await bob.page.click('#micBtn');
+  await expect(bob.page.locator('#micBtn')).toHaveText('Sluk mikrofon');
+  expect((await bob.page.evaluate(() => (window as any).__loftDebug())).micHasStream).toBe(true);
+  await expect(alice.page.locator('#grid audio')).toHaveCount(1, { timeout: 10000 });
+  await expectConnected(alice.page);
+  await expectConnected(bob.page);
+});
