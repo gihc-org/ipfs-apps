@@ -257,27 +257,39 @@ som i Loft (remote track → `<audio>`-element):
 
 Testplan på telefonen (samme earplugs hele vejen):
 
-1. Google Meet i **Firefox** på telefonen (Meet er ren WebRTC). Lander lyden i
-   earpluggene → problemet er i vores frontend eller vores brug af medierne; går
-   den i højttaleren → det er Firefox/Android, og `setSinkId` er den eneste
-   klientside-vej.
-2. Samme i **Chrome** på telefonen (hvis installeret) for at se om det er
+1. **Uafhængig kontroltest** (ikke vores kode). Google Meet er en død ende:
+   Meet-web fejler i Firefox på Android med "Kan ikke færdiggøre forespørgslen,
+   prøv igen" (fundet 2026-09-13) inden der overhovedet kommer et møde op.
+   Brug i stedet WebRTC-projektets eget lydeksempel:
+   `https://webrtc.github.io/samples/src/content/peerconnection/audio/` —
+   `pc1`↔`pc2` i samme side, remote lyd i et `<audio>`-element, ingen konto og
+   ingen signaleringsserver. Lander lyden i earpluggene der, er problemet vores
+   frontend; går den i højttaleren, er det Firefox/Android, og `setSinkId` er den
+   eneste klientside-vej. (Alternativ med to deltagere: Jitsi på telefonen +
+   laptop som den anden part.)
+2. Samme kontrol i **Chrome** på telefonen (hvis installeret) for at se om det er
    Firefox-specifikt.
-3. `audio-debug.html`: kør tonen og skift output-enhed. Kommer der enheder i
+3. **Ren telefon-test uden deploy:** spil musik i earpluggene (fx en podcast),
+   åbn `https://loft.test.gihc.online` på telefonen og deltag i et loft —
+   mikrofonen starter automatisk. Holder musikken op eller skifter profil, når
+   capture starter? Det viser om Android skifter audio-mode (`MODE_IN_COMMUNICATION`,
+   SCO/HFP) alene på grund af mikrofonen, uafhængigt af om der er andre deltagere.
+4. `audio-debug.html`: kør tonen og skift output-enhed. Kommer der enheder i
    listen, og virker skiftet?
-4. Mens tonen kører: sluk mikrofonen (mute) og derefter frigiv den helt. Skifter
+5. Mens tonen kører: sluk mikrofonen (mute) og derefter frigiv den helt. Skifter
    lyden tilbage til earpluggene, når capture slippes (SCO/HFP vs. A2DP)?
-5. Gentag med "medtag videospor" slået til (video-sessioner bruger typisk
+6. Gentag med "medtag videospor" slået til (video-sessioner bruger typisk
    speakerphone-tilstand).
 
 - [x] Diagnostikværktøj: `frontend/audio-debug.html` + e2e i begge browsere
 - [x] `setSinkId`-vælger i `loft.html` ("Lyd ud" i værktøjslinjen, gemt i
       localStorage `loft.sinkId`, skjult når browseren ikke eksponerer enheder)
 - [ ] Afklar om det er Firefox-specifikt: Google Meet i **Firefox** på samme
-      telefon med samme earplugs (punkt 1 ovenfor — kræver brugerens telefon)
+      telefon med samme earplugs (punkt 1–2 ovenfor — kræver brugerens telefon;
+      brug WebRTC-lydeksemplet, ikke Meet)
 - [ ] Tjek om det forsvinder uden kamera/skærmdeling, og om earpluggene skifter
-      til SCO/opkaldsprofil når mikrofonen er aktiv (punkt 4–5)
-- [ ] Afprøv `setSinkId` på telefonen (punkt 3) — kræver at siden er deployet
+      til SCO/opkaldsprofil når mikrofonen er aktiv (punkt 3 og 5–6)
+- [ ] Afprøv `setSinkId` på telefonen (punkt 4) — kræver at siden er deployet
       til et miljø telefonen kan nå
 - [ ] Hvis `setSinkId` ikke er en vej: overvej om mikrofonen skal frigives når
       den slukkes (Android holder `MODE_IN_COMMUNICATION` så længe capture er aktiv)
