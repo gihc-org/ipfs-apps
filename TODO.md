@@ -241,6 +241,47 @@ virker sink-valg hele vejen fra `RTCPeerConnection` til udgangen. På Android er
 det stadig uafklaret, og svaret afhænger af om `enumerateDevices()` overhovedet
 viser `audiooutput`-enheder der.
 
+### Android-afklaring (2026-09-13)
+
+Slået op i MDN browser-compat-data og Bugzilla, efter telefonen meldte at
+`HTMLMediaElement.setSinkId` ikke findes:
+
+| API | Firefox desktop | Firefox for Android | Chrome for Android |
+|-----|-----------------|---------------------|--------------------|
+| `HTMLMediaElement.setSinkId` | 116+ | **nej** ([bug 1473346](https://bugzil.la/1473346)) | **nej** ([crbug 41276355](https://crbug.com/41276355)) |
+| `mediaDevices.selectAudioOutput` | 116+ | **nej** | nej ([crbug 372214870](https://crbug.com/372214870)) |
+
+Der findes altså **ingen** output-device-API på Android, hverken i Firefox eller
+Chrome. `setSinkId`-vejen er dermed lukket på telefonen, og "Lyd ud"-vælgeren i
+`loft.html` kan pr. konstruktion aldrig dukke op der (den er feature-detekteret).
+Tilbage er adfærds-vejene: mikrofonen/capture (`MODE_IN_COMMUNICATION`) og
+video-/speakerphone-tilstand — derfor er tone-testen i `audio-debug.html`
+afgørende: den kører fjernlyd gennem WebRTC **uden** mikrofon og uden tilladelser.
+
+Bekræftet i Firefox-kilden (gecko-dev, tip ≈ 156) 2026-09-13 — API'et er både
+SecureContext- og pref-gated, og preffen er slået fra på Android:
+
+```
+- name: media.setsinkid.enabled
+  type: bool
+#if defined(MOZ_WIDGET_ANDROID)
+  value: false # bug 1473346
+#else
+  value: true
+#endif
+```
+
+(`dom/webidl/HTMLMediaElement.webidl`: `[SecureContext, Pref="media.setsinkid.enabled"]
+readonly attribute DOMString sinkId;` + `setSinkId`.) Telefonens Firefox 155 er
+altså omfattet — versionsnummeret ændrer ikke noget. `bug 1473346`
+("Investigate supporting audio device enumeration in cubeb on android") står
+stadig som NEW, så selv med preffen slået til manuelt ville der ikke være
+`audiooutput`-enheder at vælge imellem.
+
+Bemærk også: `[SecureContext]` betyder at hele API'et er skjult over http — den
+første telefon-rapport ("setSinkId findes IKKE") kan derfor ikke bruges som
+bevis i sig selv; kildekoden ovenfor er beviset.
+
 ### Diagnostikværktøj til telefonen
 
 `frontend/audio-debug.html` (åbnes på telefonen, fx
@@ -289,8 +330,8 @@ Testplan på telefonen (samme earplugs hele vejen):
       brug WebRTC-lydeksemplet, ikke Meet)
 - [ ] Tjek om det forsvinder uden kamera/skærmdeling, og om earpluggene skifter
       til SCO/opkaldsprofil når mikrofonen er aktiv (punkt 3 og 5–6)
-- [ ] Afprøv `setSinkId` på telefonen (punkt 4) — kræver at siden er deployet
-      til et miljø telefonen kan nå
+- [x] Afprøv `setSinkId` på telefonen — afklaret 2026-09-13 uden telefon:
+      API'et findes slet ikke på Android (MDN/Bugzilla), så denne vej er lukket
 - [ ] Hvis `setSinkId` ikke er en vej: overvej om mikrofonen skal frigives når
       den slukkes (Android holder `MODE_IN_COMMUNICATION` så længe capture er aktiv)
 

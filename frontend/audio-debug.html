@@ -27,6 +27,10 @@
     #reportArea { width: 100%; height: 120px; font-family: monospace; font-size: 12px; margin-top: 8px; }
     .dev { font-size: 13px; padding: 4px 0; border-bottom: 1px solid var(--border); }
     .hint { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+    h3 { font-size: 13px; margin: 14px 0 6px; color: var(--text-muted); }
+    .steps ol { margin: 0; padding-left: 20px; font-size: 13px; }
+    .steps li { margin-bottom: 6px; }
+    button.big { font-size: 17px; padding: 12px 18px; }
   </style>
 </head>
 <body>
@@ -35,42 +39,67 @@
   <main>
     <h1>Lyd-routing på telefoner</h1>
     <p class="lead">
-      Åbn siden på telefonen med earpluggene tilkoblet, kør felterne nedefra og op, og
-      kopiér rapporten tilbage. Siden laver sin egen WebRTC-forbindelse mellem to
-      <code>RTCPeerConnection</code>-objekter i samme side, så fjernlyden går gennem
-      præcis samme sti som i Loft (remote track → <code>&lt;audio&gt;</code>-element).
+      Siden laver sin egen WebRTC-forbindelse mellem to
+      <code>RTCPeerConnection</code>-objekter i samme side, så fjernlyden går
+      gennem præcis samme sti som i Loft (remote track →
+      <code>&lt;audio&gt;</code>-element) — men uden mikrofon og uden tilladelser.
     </p>
 
-    <section class="card">
-      <h2>1 · Miljø og understøttelse</h2>
-      <table><tbody id="envBody"></tbody></table>
+    <section class="card steps">
+      <h2>Sådan gør du (3 trin)</h2>
+      <ol>
+        <li>Tryk <strong>Start tone</strong> i felt 1 herunder — du skal høre en jævn 440 Hz-tone.</li>
+        <li>Lyt: kommer tonen ud af <strong>earpluggene</strong> eller af telefonens
+            <strong>højttaler</strong>?</li>
+        <li>Tryk <strong>Kopiér rapport</strong> i felt 2 og send rapporten tilbage.</li>
+      </ol>
+      <p class="hint">Felt 3 kræver https og kan springes over nu.</p>
     </section>
 
     <section class="card">
-      <h2>2 · Enheder</h2>
+      <h2>1 · Test: fjernlyd fra WebRTC (tone)</h2>
+      <div class="row">
+        <button id="toneBtn" class="big">▶ Start tone</button>
+        <button id="tonePauseBtn" class="secondary" hidden>Pause</button>
+      </div>
+      <div class="state" id="toneState">Ikke startet.</div>
+      <div id="toneMedia" style="margin-top:8px"></div>
+      <div class="row">
+        <label class="check"><input type="checkbox" id="includeVideo"> Medtag videospor (som kamera/skærmdeling)</label>
+      </div>
+      <div class="hint">Tag testen to gange: først uden flueben, derefter med
+        «Medtag videospor» slået til (video-sessioner bruger typisk
+        speakerphone-tilstand). Skriv gerne tilbage hvad du hører i hvert af de to tilfælde.</div>
+    </section>
+
+    <section class="card">
+      <h2>2 · Rapport</h2>
+      <div class="row">
+        <button id="copyReportBtn">Kopiér rapport</button>
+        <button id="clearLogBtn" class="secondary">Ryd log</button>
+      </div>
+      <textarea id="reportArea" readonly spellcheck="false" aria-label="Rapport"></textarea>
+      <div id="log"></div>
+    </section>
+
+    <section class="card">
+      <h2>3 · Kræver https (kan springes over nu)</h2>
+      <p class="hint">Over http skjuler browserne <code>getUserMedia</code>,
+        <code>enumerateDevices()</code> og hele Audio Output-API'et. At felterne
+        nedenfor siger «utilgængeligt» er derfor ikke i sig selv et fund.</p>
+
+      <h3>Miljø og understøttelse</h3>
+      <table><tbody id="envBody"></tbody></table>
+
+      <h3>Enheder</h3>
       <div class="row">
         <button id="permBtn">Giv mikrofon-tilladelse og opdatér</button>
         <button id="refreshBtn" class="secondary">Opdatér</button>
       </div>
       <div id="deviceList" class="mono">—</div>
       <div class="hint" id="deviceHint"></div>
-    </section>
 
-    <section class="card">
-      <h2>3 · Fjernlyd fra WebRTC (tone)</h2>
-      <div class="row">
-        <button id="toneBtn">Start tone</button>
-        <button id="tonePauseBtn" class="secondary" hidden>Pause</button>
-        <label class="check"><input type="checkbox" id="includeVideo"> Medtag videospor (som kamera/skærmdeling)</label>
-      </div>
-      <div class="state" id="toneState">Ikke startet.</div>
-      <div class="hint">Hvor kommer tonen ud? Earplugs = ønsket. Telefonens højttaler = fundet.</div>
-      <div id="toneMedia" style="margin-top:8px"></div>
-      <div class="hint">Prøv at skifte output-enhed nedenfor mens tonen kører, og bagefter med mikrofonen tændt/slukket.</div>
-    </section>
-
-    <section class="card">
-      <h2>4 · Egen mikrofon (lokal loopback)</h2>
+      <h3>Egen mikrofon (lokal loopback)</h3>
       <div class="row">
         <button id="micBtn">Start mikrofon</button>
         <button id="micMuteBtn" class="secondary" hidden>Sluk (mute)</button>
@@ -78,12 +107,10 @@
       </div>
       <div class="state" id="micState">Ikke startet.</div>
       <div class="hint">Frigiv slipper capture helt (som når et opkald afsluttes). Se om lyden
-        skifter tilbage til earpluggene, mens tonen i felt 3 kører.</div>
+        skifter tilbage til earpluggene, mens tonen i felt 1 kører.</div>
       <div id="micMedia" style="margin-top:8px"></div>
-    </section>
 
-    <section class="card">
-      <h2>5 · Output-enhed</h2>
+      <h3>Output-enhed (setSinkId)</h3>
       <div class="row">
         <label class="check">Lyd ud
           <select id="sinkSelect"><option value="">Systemstandard</option></select>
@@ -91,16 +118,6 @@
         <button id="sinkApplyBtn">Anvend</button>
       </div>
       <div class="state" id="sinkState">—</div>
-    </section>
-
-    <section class="card">
-      <h2>6 · Log og rapport</h2>
-      <div class="row">
-        <button id="copyReportBtn" class="secondary">Kopiér rapport</button>
-        <button id="clearLogBtn" class="secondary">Ryd log</button>
-      </div>
-      <div id="log"></div>
-      <textarea id="reportArea" readonly spellcheck="false" aria-label="Rapport"></textarea>
     </section>
   </main>
 
@@ -319,7 +336,7 @@
         tone.osc.start();
         log('tone startet (videospor: ' + withVideo + ')');
 
-        $('toneBtn').textContent = 'Stop tone';
+        $('toneBtn').textContent = '⏹ Stop tone';
         $('tonePauseBtn').hidden = false;
         $('tonePauseBtn').textContent = 'Pause';
         tone.stateTimer = setInterval(updateToneState, 500);
@@ -356,7 +373,7 @@
       if (tone.audio) tone.audio.remove();
       if (tone.video) tone.video.remove();
       tone.audio = tone.video = null;
-      $('toneBtn').textContent = 'Start tone';
+      $('toneBtn').textContent = '▶ Start tone';
       $('tonePauseBtn').hidden = true;
       updateToneState();
       log('tone stoppet');
@@ -520,6 +537,15 @@
     window.__audioDebug = { report, support, startTone, stopTone, startMic, releaseMic, refreshDevices };
 
     renderEnv();
+    // setSinkId er et SecureContext-API, så over http kan vi ikke afgøre om
+    // browseren har det — og på Android er det slet ikke implementeret
+    // (MDN/browser-compat-data → bug 1473346 for Firefox, crbug 41276355 for
+    // Chrome). Sig det eksplicit i stedet for at lade feltet stå tomt.
+    if (!support().htmlMediaElementSetSinkId) {
+      $('sinkState').textContent = window.isSecureContext
+        ? 'setSinkId findes ikke i denne browser (Android: ikke implementeret)'
+        : 'kan ikke afgøres over http — hele Audio Output-API\'et er skjult her';
+    }
     refreshDevices();
     updateReport();
     log('side indlæst');
