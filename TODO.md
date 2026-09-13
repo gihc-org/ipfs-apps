@@ -78,13 +78,13 @@ Kopér blokken herunder som første besked til agenten:
   sidste build, mens `k8s/prod/` er pinnet til `f83722c`.
 - Derfor: beslut om grenen (punkt 2 i start-prompten) før et prod-deploy.
 
-**Modstridende observation 2026-09-13 19:31** (skal bekræftes mod GitHub): den
-lokale reflog viser `merge feat/loft-k3s-refocus: Fast-forward` på `trunk` og
-`update by push` for `origin/trunk` på commit `1018f43` — altså at grenen både
-er merget og pushet fra denne maskine. `git ls-remote` kunne ikke køres fra
-agentmiljøet (ingen SSH-nøgle), så sandheden ligger i et CI-run på GitHub:
-findes der et grønt `Build and push Loft images`-run på `1018f43`, er CI-leddet
-og `ghcr.io/gihc-org/loft{,-web}:1018f43` på plads.
+**Status 2026-09-13 (aften) — afsluttet:** grenen er merget til `trunk` og
+pushet, og alle tre refs står nu på `2816181` (`trunk`, `feat/loft-k3s-refocus`,
+`origin/trunk`). CI har bygget begge images; `ghcr.io/gihc-org/loft{,-web}`
+har tag'et `28161813015adf4f27fdcb57c774e3fedc67f550` (verificeret anonymt mod
+GHCR's tags-API, da `gh` ikke er installeret i agentmiljøet). `loft-web` er
+rullet i `loft-test` på det byggede image, og `k8s/prod/` er pinnet til samme
+SHA. Første push-fund (`1018f43`) blev bekræftet på samme måde i sin tid.
 
 ## M0 — Fundament (dokumentation)
 

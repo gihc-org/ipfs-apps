@@ -16,7 +16,7 @@ spec:
       containers:
         - name: loft-web
           # Samme SHA-tag som API'et — se deployment-api.yaml.
-          image: ghcr.io/gihc-org/loft-web:f83722c6e948c62d74457a39016f0ba74caff9d1
+          image: ghcr.io/gihc-org/loft-web:28161813015adf4f27fdcb57c774e3fedc67f550
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80
