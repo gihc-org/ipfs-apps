@@ -8,6 +8,8 @@
 <body>
   <!-- Legacy chat-login erstattet af Loft — redirect til loft.html -->
   <p style="font-family:system-ui,sans-serif">Viderestiller til <a href="/loft.html">Loft</a>…</p>
-  <script>location.replace('/loft.html');</script>
+  <!-- Bevar query-strengen: /?id=<loft> og cache-bustere som /?v=2 skal ikke
+       ende i lobbyen. (Meta-refresh ovenfor kan ikke, så scriptet tager den.) -->
+  <script>location.replace('/loft.html' + location.search);</script>
 </body>
 </html>
