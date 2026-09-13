@@ -128,16 +128,28 @@
     }
 
     function support() {
+      const md = navigator.mediaDevices;
       return {
         htmlMediaElementSetSinkId: typeof HTMLMediaElement.prototype.setSinkId === 'function',
         audioContextSetSinkId:
           typeof window.AudioContext !== 'undefined' && typeof AudioContext.prototype.setSinkId === 'function',
-        selectAudioOutput: typeof navigator.mediaDevices.selectAudioOutput === 'function',
+        mediaDevices: Boolean(md),
+        selectAudioOutput: typeof md?.selectAudioOutput === 'function',
         captureStream: typeof HTMLCanvasElement.prototype.captureStream === 'function',
         userAgentData: navigator.userAgentData && navigator.userAgentData.platform
           ? navigator.userAgentData.platform + ' / ' + navigator.userAgentData.mobile
           : undefined,
       };
+    }
+
+    // Over http (fx LAN-IP) er navigator.mediaDevices skjult og getUserMedia
+    // utilgængelig — til gengæld virker RTCPeerConnection, WebAudio og
+    // setSinkId fint, og tone-testen i felt 3 er netop den test vi har brug for.
+    function mediaUnavailable() {
+      if (navigator.mediaDevices) return false;
+      $('deviceList').textContent = 'utilgængeligt over http (kræver https eller localhost)';
+      $('deviceHint').textContent = 'Tone-testen i felt 3 virker stadig.';
+      return true;
     }
 
     function renderEnv() {
@@ -146,6 +158,7 @@
         ['User agent', navigator.userAgent],
         ['Platform', s.userAgentData ?? '—'],
         ['Secure context', String(window.isSecureContext)],
+        ['navigator.mediaDevices', s.mediaDevices ? 'findes' : 'findes IKKE (ikke-sikker origin)'],
         ['HTMLMediaElement.setSinkId', s.htmlMediaElementSetSinkId ? 'findes' : 'findes IKKE'],
         ['AudioContext.setSinkId', s.audioContextSetSinkId ? 'findes' : 'findes IKKE'],
         ['mediaDevices.selectAudioOutput', s.selectAudioOutput ? 'findes' : 'findes IKKE'],
@@ -174,6 +187,7 @@
     }
 
     async function refreshDevices() {
+      if (mediaUnavailable()) return [];
       try {
         devices = await navigator.mediaDevices.enumerateDevices();
       } catch (e) {
@@ -355,6 +369,10 @@
 
     async function startMic() {
       await stopMic();
+      if (mediaUnavailable()) {
+        fail('getUserMedia', new Error('navigator.mediaDevices findes ikke på denne origin'));
+        return;
+      }
       try {
         mic.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         mic.audio = document.createElement('audio');
@@ -459,6 +477,7 @@
       }
     });
     $('permBtn').addEventListener('click', async () => {
+      if (mediaUnavailable()) return;
       try {
         const s = await navigator.mediaDevices.getUserMedia({ audio: true });
         s.getTracks().forEach((t) => t.stop());
@@ -492,7 +511,7 @@
       setTimeout(() => { $('copyReportBtn').textContent = 'Kopiér rapport'; }, 2000);
     });
 
-    navigator.mediaDevices.addEventListener?.('devicechange', () => {
+    navigator.mediaDevices?.addEventListener?.('devicechange', () => {
       log('devicechange');
       refreshDevices();
     });

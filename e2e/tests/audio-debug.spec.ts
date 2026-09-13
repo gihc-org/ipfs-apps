@@ -48,3 +48,30 @@ test('audio-debug: videospor i loopback (kamera/skærm-scenariet)', async ({ pag
   const report = await page.evaluate(() => (window as any).__audioDebug.report());
   expect(report.errors).toEqual([]);
 });
+
+// Siden skal også kunne bruges fra en almindelig http-origin (fx LAN-IP på en
+// telefon), hvor navigator.mediaDevices ikke findes: tone-testen skal stadig
+// kunne køre, for det er den der afgør hvor fjernlyden kommer ud.
+test('audio-debug: degraderer pænt uden mediaDevices (http-origin)', async ({ page }) => {
+  await page.addInitScript(() => {
+    // mediaDevices er en accessor på Navigator.prototype — den skal fjernes der
+    // for at efterligne en almindelig http-origin.
+    Object.defineProperty(Navigator.prototype, 'mediaDevices', {
+      configurable: true,
+      get: () => undefined,
+    });
+  });
+  await page.goto('/audio-debug.html');
+
+  await expect(page.locator('#envBody')).toContainText('findes IKKE');
+  await expect(page.locator('#deviceList')).toContainText('utilgængeligt');
+
+  await page.click('#toneBtn');
+  await page.waitForFunction(() => {
+    const report = (window as any).__audioDebug.report();
+    return report.tone && report.tone.audioPaused === false;
+  }, undefined, { timeout: 15000 });
+
+  const report = await page.evaluate(() => (window as any).__audioDebug.report());
+  expect(report.errors).toEqual([]);
+});
