@@ -77,6 +77,14 @@ Kopér blokken herunder som første besked til agenten:
   sidste build, mens `k8s/prod/` er pinnet til `f83722c`.
 - Derfor: beslut om grenen (punkt 2 i start-prompten) før et prod-deploy.
 
+**Modstridende observation 2026-09-13 19:31** (skal bekræftes mod GitHub): den
+lokale reflog viser `merge feat/loft-k3s-refocus: Fast-forward` på `trunk` og
+`update by push` for `origin/trunk` på commit `1018f43` — altså at grenen både
+er merget og pushet fra denne maskine. `git ls-remote` kunne ikke køres fra
+agentmiljøet (ingen SSH-nøgle), så sandheden ligger i et CI-run på GitHub:
+findes der et grønt `Build and push Loft images`-run på `1018f43`, er CI-leddet
+og `ghcr.io/gihc-org/loft{,-web}:1018f43` på plads.
+
 ## M0 — Fundament (dokumentation)
 
 - [x] Beslutning: Loft link-rum (Plan B), gæsteadgang, statisk frontend
@@ -220,19 +228,59 @@ Headsettet har både "telefonopkald" (HFP) og "medielyd" (A2DP) slået til, så 
 er ikke et A2DP-only headset — det er browserens/Android's valg af
 kommunikationsenhed for WebRTC.
 
-- [ ] Afklar om det er Firefox-specifikt: kør Google Meet i **Firefox** på samme
-      telefon med samme earplugs (Meet er ren WebRTC). Landet lyden i earpluggene
-      der, er der noget i vores frontend; gør den ikke, er det Firefox/Android.
-- [ ] Tjek om det forsvinder uden kamera/skærmdeling (Chrome/Firefox bruger
-      speakerphone-tilstand i video-sessioner) og om earpluggene skifter til
-      SCO/opkaldsprofil, når mikrofonen tændes.
-- [ ] Afprøv om `HTMLMediaElement.setSinkId()` kan tvinge fjern-lyden over på
-      earpluggene. Desktop-Firefox 148 har API'et (verificeret 2026-09-12),
-      `AudioContext.setSinkId` findes kun i Chromium — og på Firefox til Android
-      er det uafklaret, så det skal testes på telefonen. Kræver at
-      `enumerateDevices()` overhovedet viser `audiooutput`-enheder på Android.
-- [ ] Hvis `setSinkId` ikke er en vej: undersøg om Firefox skifter til SCO når
-      mikrofonen er aktiv (pauser earpluggene deres musik, når man joiner?).
+### Verificeret i desktop-browsere (2026-09-13, headless via Playwright)
+
+| Browser | `HTMLMediaElement.setSinkId` | `AudioContext.setSinkId` | `selectAudioOutput` | `audiooutput` i `enumerateDevices()` |
+|---------|------------------------------|--------------------------|---------------------|--------------------------------------|
+| Chromium 147 | findes | findes | findes ikke | ja, uden tilladelse (fake-enheder) |
+| Firefox 148 | findes | findes ikke | findes | kun **efter** mikrofon-tilladelse (`getUserMedia`) |
+
+`audio.setSinkId(<deviceId>)` blev anvendt på en ægte remote WebRTC-lydtrack i
+begge browsere (e2e-testen `lydudgang kan vælges … (setSinkId)`), så på desktop
+virker sink-valg hele vejen fra `RTCPeerConnection` til udgangen. På Android er
+det stadig uafklaret, og svaret afhænger af om `enumerateDevices()` overhovedet
+viser `audiooutput`-enheder der.
+
+### Diagnostikværktøj til telefonen
+
+`frontend/audio-debug.html` (åbnes på telefonen, fx
+`https://loft.test.gihc.online/audio-debug.html`) laver sin egen
+`RTCPeerConnection`-loopback i siden, så fjernlyden går gennem præcis samme sti
+som i Loft (remote track → `<audio>`-element):
+
+1. **Miljø** — UA, secure context, `setSinkId`/`selectAudioOutput`-support.
+2. **Enheder** — `enumerateDevices()` før/efter mikrofon-tilladelse.
+3. **Tone** — 440 Hz gennem WebRTC, med valgfrit videospor (kamera/skærm-scenariet).
+4. **Mikrofon** — lokal loopback med "sluk (mute)" og "frigiv (stop spor)".
+5. **Output-enhed** — `setSinkId` på den kørende fjernlyd.
+6. **Rapport** — JSON til copy/paste, så fundet kan deles uden devtools på telefonen.
+
+Testplan på telefonen (samme earplugs hele vejen):
+
+1. Google Meet i **Firefox** på telefonen (Meet er ren WebRTC). Lander lyden i
+   earpluggene → problemet er i vores frontend eller vores brug af medierne; går
+   den i højttaleren → det er Firefox/Android, og `setSinkId` er den eneste
+   klientside-vej.
+2. Samme i **Chrome** på telefonen (hvis installeret) for at se om det er
+   Firefox-specifikt.
+3. `audio-debug.html`: kør tonen og skift output-enhed. Kommer der enheder i
+   listen, og virker skiftet?
+4. Mens tonen kører: sluk mikrofonen (mute) og derefter frigiv den helt. Skifter
+   lyden tilbage til earpluggene, når capture slippes (SCO/HFP vs. A2DP)?
+5. Gentag med "medtag videospor" slået til (video-sessioner bruger typisk
+   speakerphone-tilstand).
+
+- [x] Diagnostikværktøj: `frontend/audio-debug.html` + e2e i begge browsere
+- [x] `setSinkId`-vælger i `loft.html` ("Lyd ud" i værktøjslinjen, gemt i
+      localStorage `loft.sinkId`, skjult når browseren ikke eksponerer enheder)
+- [ ] Afklar om det er Firefox-specifikt: Google Meet i **Firefox** på samme
+      telefon med samme earplugs (punkt 1 ovenfor — kræver brugerens telefon)
+- [ ] Tjek om det forsvinder uden kamera/skærmdeling, og om earpluggene skifter
+      til SCO/opkaldsprofil når mikrofonen er aktiv (punkt 4–5)
+- [ ] Afprøv `setSinkId` på telefonen (punkt 3) — kræver at siden er deployet
+      til et miljø telefonen kan nå
+- [ ] Hvis `setSinkId` ikke er en vej: overvej om mikrofonen skal frigives når
+      den slukkes (Android holder `MODE_IN_COMMUNICATION` så længe capture er aktiv)
 
 ## GDPR (forenklet)
 

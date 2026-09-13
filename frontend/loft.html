@@ -22,6 +22,9 @@
     #status { color: var(--text-muted); font-size: 13px; min-height: 18px; margin-bottom: 14px; }
     #status.error { color: var(--danger); }
 
+    #sinkWrap { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-muted); }
+    #sinkWrap select { max-width: 190px; padding: 4px 6px; }
+
     #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
     .participant-card {
       background: var(--surface);
@@ -120,6 +123,9 @@
       <div class="toolbar">
         <span class="user" id="youLabel"></span>
         <span class="spacer"></span>
+        <label id="sinkWrap" hidden>Lyd ud
+          <select id="sinkSelect"><option value="">Systemstandard</option></select>
+        </label>
         <button id="micBtn" class="secondary">Tænd mikrofon</button>
         <button id="camBtn" class="secondary">Tænd kamera</button>
         <button id="screenBtn" class="secondary">Del skærm</button>
@@ -165,6 +171,12 @@
     const micBtn = $('micBtn'), camBtn = $('camBtn'), screenBtn = $('screenBtn');
     const inviteModal = $('inviteModal'), inviteUrlInput = $('inviteUrl');
     const shareInviteBtn = $('shareInvite');
+    const sinkWrap = $('sinkWrap'), sinkSelect = $('sinkSelect');
+
+    // Output-enhed: kun Firefox/Chromium på desktop eksponerer audiooutput +
+    // setSinkId. På Android er listen typisk tom, og så skjules vælgeren.
+    const SINK_KEY = 'loft.sinkId';
+    const canSetSinkId = typeof HTMLMediaElement.prototype.setSinkId === 'function';
 
     // Link kan åbne direkte på et loft — feltet præ-udfyldes.
     const initialId = new URLSearchParams(location.search).get('id');
@@ -189,6 +201,8 @@
       leaving: false,
       retryTimer: null,
       retryDelay: 1000,
+      outputDevices: [],
+      sinkId: localStorage.getItem(SINK_KEY) || '',
     };
 
     function apiBase() {
@@ -261,7 +275,16 @@
             recv: p.pc.getReceivers().map((r) => r.track.kind),
           }))
         : [];
-      return { selfId: state.selfId, peers, micOn: state.micOn, screenOn: state.screenOn };
+      return {
+        selfId: state.selfId,
+        peers,
+        micOn: state.micOn,
+        screenOn: state.screenOn,
+        sinkSupported: canSetSinkId,
+        sinkId: state.sinkId,
+        sinkSelectable: !sinkWrap.hidden,
+        outputDevices: state.outputDevices.map((d) => ({ deviceId: d.deviceId, label: d.label })),
+      };
     };
 
     // ── Lobby ───────────────────────────────────────────────────────────────
@@ -493,7 +516,7 @@
           cell.media.appendChild(cell.audio);
         }
         cell.audio.srcObject = new MediaStream([track]);
-        cell.audio.play().catch(() => {});
+        cell.audio.play().then(() => applySink(cell.audio)).catch(() => {});
       } else {
         const video = document.createElement('video');
         video.autoplay = true;
@@ -546,6 +569,72 @@
       screenBtn.classList.toggle('active', state.screenOn);
     }
 
+    // ── Output-enhed (setSinkId) ───────────────────────────────────────────
+    //
+    // Fund 2026-09-12: WebRTC-lyden gik ud af telefonens højttaler i stedet for
+    // Bluetooth-earpluggene. setSinkId er den eneste standardvej til at tvinge
+    // fjernlyden over på en bestemt udgang, men Android-browsere eksponerer
+    // sjældent audiooutput-enheder — derfor er hele vælgeren feature-detekteret
+    // og gemmer kun et valg, når brugeren selv skifter.
+
+    function fillSinkSelect(devices) {
+      const previous = state.sinkId;
+      sinkSelect.innerHTML = '<option value="">Systemstandard</option>';
+      for (const d of devices) {
+        if (!d.deviceId || d.deviceId === 'default') continue;
+        const opt = document.createElement('option');
+        opt.value = d.deviceId;
+        opt.textContent = d.label || d.deviceId;
+        sinkSelect.appendChild(opt);
+      }
+      // Et gemt deviceId kan være væk (fx et headset der ikke er tilsluttet) —
+      // fald tilbage til systemstandarden i stedet for at fejle ved hvert spor.
+      if (previous && [...sinkSelect.options].some((o) => o.value === previous)) {
+        sinkSelect.value = previous;
+      } else if (previous) {
+        state.sinkId = '';
+        localStorage.removeItem(SINK_KEY);
+      }
+      sinkWrap.hidden = sinkSelect.options.length < 2;
+    }
+
+    async function refreshOutputs() {
+      if (!canSetSinkId) return;
+      let devices;
+      try {
+        devices = await navigator.mediaDevices.enumerateDevices();
+      } catch (_) {
+        return;
+      }
+      state.outputDevices = devices.filter((d) => d.kind === 'audiooutput');
+      fillSinkSelect(state.outputDevices);
+    }
+
+    async function applySink(el) {
+      if (!canSetSinkId || !el || typeof el.setSinkId !== 'function') return;
+      const wanted = state.sinkId || '';
+      if (el.sinkId === wanted) return;
+      try {
+        await el.setSinkId(wanted);
+      } catch (e) {
+        // Typisk NotFoundError forsvundet headset eller NotAllowedError uden
+        // tilladelse — fjern valget så næste spor starter på systemstandarden.
+        state.sinkId = '';
+        localStorage.removeItem(SINK_KEY);
+        fillSinkSelect(state.outputDevices);
+        setStatus(`Kunne ikke bruge den valgte lydudgang (${e.name}) — bruger systemstandarden`, true);
+      }
+    }
+
+    function onSinkChange() {
+      state.sinkId = sinkSelect.value;
+      if (state.sinkId) localStorage.setItem(SINK_KEY, state.sinkId);
+      else localStorage.removeItem(SINK_KEY);
+      for (const cell of state.cells.values()) {
+        if (cell.audio) applySink(cell.audio);
+      }
+    }
+
     async function autoStartMic() {
       // E2e deaktiverer auto-mic (sessionStorage) for at undgå samtidige
       // offers mellem to nye deltagere — og starter medier sekventielt.
@@ -558,6 +647,7 @@
         if (state.rtc) state.rtc.addMedia('mic', stream);
         updateControlButtons();
         broadcastMediaState();
+        refreshOutputs();
         setStatus(`Lyd er tændt — du deltager som ${state.name}`);
       } catch (_) {
         setStatus('Kunne ikke starte mikrofonen automatisk — klik “Tænd mikrofon”', true);
@@ -570,6 +660,7 @@
         try {
           state.micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
           if (state.rtc) state.rtc.addMedia('mic', state.micStream);
+          refreshOutputs();
         } catch (_) {
           setStatus('Mikrofon blev ikke tilladt i browseren', true);
           return;
@@ -663,6 +754,10 @@
       updateControlButtons();
       broadcastMediaState();
     };
+
+    navigator.mediaDevices?.addEventListener?.('devicechange', () => {
+      refreshOutputs();
+    });
 
     function cleanupSessionMedia() {
       clearCells();
@@ -776,6 +871,7 @@
     $('copyInvite').addEventListener('click', copyInvite);
     shareInviteBtn.addEventListener('click', shareInvite);
     $('closeInvite').addEventListener('click', () => { inviteModal.hidden = true; });
+    sinkSelect.addEventListener('change', onSinkChange);
 
     nameInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') (initialId ? joinLoftFromInput : createLoft)();
@@ -796,6 +892,10 @@
       }
     }
     updateCloseButton();
+
+    // Har siden allerede mikrofon-tilladelse (fx efter reload), er
+    // audiooutput-listen tilgængelig med det samme i Firefox.
+    if (canSetSinkId) refreshOutputs();
 
     if (initialId) nameInput.focus();
 

@@ -171,6 +171,29 @@ cd e2e && TURN_URL="$(~/projects/infra/scripts/turn-config.sh --url)" \
 
 `#[sqlx::test]` opretter en midlertidig database pr. test og dropper den igen.
 
+### Lyd-routing på telefoner
+
+Åbent fund fra accepttesten 2026-09-12: WebRTC-lyden gik ud af telefonens
+højttaler i stedet for Bluetooth-earpluggene (podcast/medieafspilning går fint
+i earpluggene). `frontend/audio-debug.html` er diagnostikværktøjet til sagen —
+åbn det på telefonen (fx `https://loft.test.gihc.online/audio-debug.html`). Siden
+laver sin egen `RTCPeerConnection`-loopback, så fjernlyden går gennem samme sti
+som i Loft, og den kan: liste enheder, spille en tone (med/uden videospor),
+slukke/frigive mikrofonen, skifte output-enhed via `setSinkId` og skrive en
+JSON-rapport til copy/paste. Planen og de verificerede desktop-fund står i
+[TODO.md](TODO.md#lyd-routing-på-telefoner-fundet-2026-09-12).
+
+Loft har selv en "Lyd ud"-vælger i værktøjslinjen; den vises kun når browseren
+både har `HTMLMediaElement.setSinkId` og eksponerer mindst én `audiooutput`-enhed
+(desktop-Firefox viser dem først efter mikrofon-tilladelse, Android typisk slet
+ikke). Valget gemmes i `localStorage` under `loft.sinkId`.
+
+```bash
+# Kun diagnostik-tests (ingen backend nødvendig)
+cd e2e && npx playwright test tests/audio-debug.spec.ts
+cd e2e && PW_FIREFOX=1 npx playwright test tests/audio-debug.spec.ts --project=firefox
+```
+
 ### Manuel test på én maskine
 
 Loft er bygget til at testes med to vinduer på samme maskine, men der er to
@@ -233,5 +256,6 @@ Se [TODO.md](TODO.md):
 - **M4 (færdig):** k3s-deploy af test-miljø — inkl. accepteret relay-sti mod
   platformens delte TURN (`turn.gihc.online`)
 - **M5:** oprydning af chat-stak (compose/ansible/caddy/IPFS) og gamle domæner
-- **Åbent:** lyd-routing på telefoner (Bluetooth-earplugs vs. højttaler) og
+- **Åbent:** lyd-routing på telefoner (Bluetooth-earplugs vs. højttaler —
+  diagnostikside og `setSinkId`-vælger er klar, selve telefon-testen mangler) og
   prod-deploy — se [TODO.md](TODO.md)

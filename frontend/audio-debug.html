@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Loft — lyd-routing diagnostik</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    main { max-width: 760px; margin: 20px auto; padding: 0 16px; width: 100%; }
+    h1 { font-size: 20px; margin-bottom: 6px; }
+    h2 { font-size: 15px; margin: 0 0 8px; }
+    p.lead { color: var(--text-muted); font-size: 13px; margin-bottom: 18px; }
+    section.card { margin-bottom: 14px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+    .row:last-child { margin-bottom: 0; }
+    label.check { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--text-muted); }
+    select { padding: 6px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { color: var(--text-muted); font-weight: 500; width: 42%; }
+    code, .mono { font-family: monospace; font-size: 12px; word-break: break-all; }
+    .state { font-size: 13px; color: var(--text-muted); min-height: 18px; }
+    .state.ok { color: var(--ok, #2ea043); }
+    .state.err { color: var(--danger); }
+    #log { background: #000; color: #ddd; font-family: monospace; font-size: 12px; border-radius: 6px;
+           padding: 8px; max-height: 220px; overflow: auto; white-space: pre-wrap; }
+    #reportArea { width: 100%; height: 120px; font-family: monospace; font-size: 12px; margin-top: 8px; }
+    .dev { font-size: 13px; padding: 4px 0; border-bottom: 1px solid var(--border); }
+    .hint { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <nav><span class="brand">Loft</span><span class="user">Lyd-routing diagnostik</span></nav>
+
+  <main>
+    <h1>Lyd-routing på telefoner</h1>
+    <p class="lead">
+      Åbn siden på telefonen med earpluggene tilkoblet, kør felterne nedefra og op, og
+      kopiér rapporten tilbage. Siden laver sin egen WebRTC-forbindelse mellem to
+      <code>RTCPeerConnection</code>-objekter i samme side, så fjernlyden går gennem
+      præcis samme sti som i Loft (remote track → <code>&lt;audio&gt;</code>-element).
+    </p>
+
+    <section class="card">
+      <h2>1 · Miljø og understøttelse</h2>
+      <table><tbody id="envBody"></tbody></table>
+    </section>
+
+    <section class="card">
+      <h2>2 · Enheder</h2>
+      <div class="row">
+        <button id="permBtn">Giv mikrofon-tilladelse og opdatér</button>
+        <button id="refreshBtn" class="secondary">Opdatér</button>
+      </div>
+      <div id="deviceList" class="mono">—</div>
+      <div class="hint" id="deviceHint"></div>
+    </section>
+
+    <section class="card">
+      <h2>3 · Fjernlyd fra WebRTC (tone)</h2>
+      <div class="row">
+        <button id="toneBtn">Start tone</button>
+        <button id="tonePauseBtn" class="secondary" hidden>Pause</button>
+        <label class="check"><input type="checkbox" id="includeVideo"> Medtag videospor (som kamera/skærmdeling)</label>
+      </div>
+      <div class="state" id="toneState">Ikke startet.</div>
+      <div class="hint">Hvor kommer tonen ud? Earplugs = ønsket. Telefonens højttaler = fundet.</div>
+      <div id="toneMedia" style="margin-top:8px"></div>
+      <div class="hint">Prøv at skifte output-enhed nedenfor mens tonen kører, og bagefter med mikrofonen tændt/slukket.</div>
+    </section>
+
+    <section class="card">
+      <h2>4 · Egen mikrofon (lokal loopback)</h2>
+      <div class="row">
+        <button id="micBtn">Start mikrofon</button>
+        <button id="micMuteBtn" class="secondary" hidden>Sluk (mute)</button>
+        <button id="micReleaseBtn" class="secondary" hidden>Frigiv (stop spor)</button>
+      </div>
+      <div class="state" id="micState">Ikke startet.</div>
+      <div class="hint">Frigiv slipper capture helt (som når et opkald afsluttes). Se om lyden
+        skifter tilbage til earpluggene, mens tonen i felt 3 kører.</div>
+      <div id="micMedia" style="margin-top:8px"></div>
+    </section>
+
+    <section class="card">
+      <h2>5 · Output-enhed</h2>
+      <div class="row">
+        <label class="check">Lyd ud
+          <select id="sinkSelect"><option value="">Systemstandard</option></select>
+        </label>
+        <button id="sinkApplyBtn">Anvend</button>
+      </div>
+      <div class="state" id="sinkState">—</div>
+    </section>
+
+    <section class="card">
+      <h2>6 · Log og rapport</h2>
+      <div class="row">
+        <button id="copyReportBtn" class="secondary">Kopiér rapport</button>
+        <button id="clearLogBtn" class="secondary">Ryd log</button>
+      </div>
+      <div id="log"></div>
+      <textarea id="reportArea" readonly spellcheck="false" aria-label="Rapport"></textarea>
+    </section>
+  </main>
+
+  <script>
+    'use strict';
+
+    const $ = (id) => document.getElementById(id);
+    const logs = [];
+    const errors = [];
+
+    function log(msg) {
+      const line = new Date().toISOString().slice(11, 19) + '  ' + msg;
+      logs.push(line);
+      const el = $('log');
+      el.textContent += line + '\n';
+      el.scrollTop = el.scrollHeight;
+      console.debug('[audio-debug]', msg);
+    }
+
+    function fail(where, err) {
+      const msg = where + ': ' + (err && err.name ? err.name + ': ' + err.message : String(err));
+      errors.push(msg);
+      log('FEJL ' + msg);
+      return msg;
+    }
+
+    function support() {
+      return {
+        htmlMediaElementSetSinkId: typeof HTMLMediaElement.prototype.setSinkId === 'function',
+        audioContextSetSinkId:
+          typeof window.AudioContext !== 'undefined' && typeof AudioContext.prototype.setSinkId === 'function',
+        selectAudioOutput: typeof navigator.mediaDevices.selectAudioOutput === 'function',
+        captureStream: typeof HTMLCanvasElement.prototype.captureStream === 'function',
+        userAgentData: navigator.userAgentData && navigator.userAgentData.platform
+          ? navigator.userAgentData.platform + ' / ' + navigator.userAgentData.mobile
+          : undefined,
+      };
+    }
+
+    function renderEnv() {
+      const s = support();
+      const rows = [
+        ['User agent', navigator.userAgent],
+        ['Platform', s.userAgentData ?? '—'],
+        ['Secure context', String(window.isSecureContext)],
+        ['HTMLMediaElement.setSinkId', s.htmlMediaElementSetSinkId ? 'findes' : 'findes IKKE'],
+        ['AudioContext.setSinkId', s.audioContextSetSinkId ? 'findes' : 'findes IKKE'],
+        ['mediaDevices.selectAudioOutput', s.selectAudioOutput ? 'findes' : 'findes IKKE'],
+      ];
+      $('envBody').innerHTML = rows
+        .map(([k, v]) => `<tr><th>${k}</th><td class="mono">${String(v)}</td></tr>`)
+        .join('');
+    }
+
+    let devices = [];
+
+    function renderDevices() {
+      const outs = devices.filter((d) => d.kind === 'audiooutput');
+      $('deviceList').innerHTML = devices.length
+        ? devices.map((d) => {
+            const label = d.label || '(uden navn — kræver tilladelse)';
+            return `<div class="dev"><b>${d.kind}</b> — ${label}<br>` +
+              `<span class="mono">id=${d.deviceId || '(tom)'} grp=${d.groupId || '(tom)'}</span></div>`;
+          }).join('')
+        : '(ingen enheder)';
+      $('deviceHint').textContent = outs.length
+        ? outs.length + ' audiooutput-enhed(er) eksponeret.'
+        : 'Ingen audiooutput-enheder eksponeret — output-valg er ikke muligt i denne browser.';
+      fillSinkSelect(outs);
+      return outs;
+    }
+
+    async function refreshDevices() {
+      try {
+        devices = await navigator.mediaDevices.enumerateDevices();
+      } catch (e) {
+        fail('enumerateDevices', e);
+        devices = [];
+      }
+      log('enumerateDevices: ' + devices.map((d) => d.kind).join(', ') || '(tom)');
+      renderDevices();
+      updateReport();
+    }
+
+    function fillSinkSelect(outs) {
+      const select = $('sinkSelect');
+      const previous = select.value;
+      select.innerHTML = '<option value="">Systemstandard</option>';
+      for (const d of outs) {
+        if (!d.deviceId || d.deviceId === 'default') continue;
+        const opt = document.createElement('option');
+        opt.value = d.deviceId;
+        opt.textContent = d.label || d.deviceId;
+        select.appendChild(opt);
+      }
+      if ([...select.options].some((o) => o.value === previous)) select.value = previous;
+    }
+
+    function sinkElements() {
+      return [tone.audio, mic.audio].filter(Boolean);
+    }
+
+    async function applySinkTo(el) {
+      if (!el) return;
+      if (typeof el.setSinkId !== 'function') {
+        $('sinkState').textContent = 'setSinkId findes ikke i denne browser.';
+        $('sinkState').className = 'state err';
+        return;
+      }
+      const id = $('sinkSelect').value;
+      try {
+        await el.setSinkId(id);
+        $('sinkState').textContent = 'OK — sinkId=' + JSON.stringify(el.sinkId);
+        $('sinkState').className = 'state ok';
+        log('setSinkId(' + JSON.stringify(id) + ') → sinkId=' + JSON.stringify(el.sinkId));
+      } catch (e) {
+        $('sinkState').textContent = fail('setSinkId(' + JSON.stringify(id) + ')', e);
+        $('sinkState').className = 'state err';
+      }
+      updateReport();
+    }
+
+    async function applySinkToAll() {
+      const els = sinkElements();
+      if (!els.length) {
+        $('sinkState').textContent = 'Ingen aktiv lyd at skifte endnu — start tonen først.';
+        $('sinkState').className = 'state';
+      }
+      for (const el of els) await applySinkTo(el);
+    }
+
+    // ── Test 3: WebRTC-fjernlyd (to RTCPeerConnections i samme side) ────────
+
+    const tone = { ac: null, osc: null, pcA: null, pcB: null, audio: null, video: null, timer: null, stateTimer: null };
+
+    async function startTone() {
+      await stopTone();
+      const withVideo = $('includeVideo').checked;
+      try {
+        tone.ac = new (window.AudioContext || window.webkitAudioContext)();
+        await tone.ac.resume();
+        tone.osc = tone.ac.createOscillator();
+        tone.osc.type = 'sine';
+        tone.osc.frequency.value = 440;
+        const gain = tone.ac.createGain();
+        gain.gain.value = 0.12;
+        const dest = tone.ac.createMediaStreamDestination();
+        tone.osc.connect(gain).connect(dest);
+        const stream = dest.stream;
+
+        if (withVideo) {
+          const canvas = document.createElement('canvas');
+          canvas.width = 320;
+          canvas.height = 180;
+          const ctx = canvas.getContext('2d');
+          tone.timer = setInterval(() => {
+            ctx.fillStyle = '#123';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#fff';
+            ctx.fillText('Loft lyd-test', 12, 90);
+          }, 250);
+          canvas.captureStream(5).getVideoTracks().forEach((t) => stream.addTrack(t));
+        }
+
+        tone.pcA = new RTCPeerConnection({ iceServers: [] });
+        tone.pcB = new RTCPeerConnection({ iceServers: [] });
+        tone.pcA.onicecandidate = (e) => { if (e.candidate) tone.pcB.addIceCandidate(e.candidate).catch((err) => fail('addIceCandidate A→B', err)); };
+        tone.pcB.onicecandidate = (e) => { if (e.candidate) tone.pcA.addIceCandidate(e.candidate).catch((err) => fail('addIceCandidate B→A', err)); };
+
+        tone.audio = document.createElement('audio');
+        tone.audio.autoplay = true;
+        tone.audio.playsInline = true;
+        tone.audio.id = 'toneAudio';
+        $('toneMedia').appendChild(tone.audio);
+
+        tone.pcB.ontrack = (e) => {
+          log('pcB modtog spor: ' + e.track.kind);
+          if (e.track.kind === 'audio') {
+            tone.audio.srcObject = new MediaStream([e.track]);
+            tone.audio.play().then(() => log('fjernlyd afspiller')).catch((err) => fail('audio.play', err));
+            applySinkTo(tone.audio);
+          } else {
+            if (!tone.video) {
+              tone.video = document.createElement('video');
+              tone.video.autoplay = true;
+              tone.video.muted = true;
+              tone.video.playsInline = true;
+              tone.video.style.maxWidth = '240px';
+              $('toneMedia').appendChild(tone.video);
+            }
+            tone.video.srcObject = new MediaStream([e.track]);
+          }
+        };
+
+        stream.getTracks().forEach((t) => tone.pcA.addTrack(t, stream));
+        const offer = await tone.pcA.createOffer();
+        await tone.pcA.setLocalDescription(offer);
+        await tone.pcB.setRemoteDescription(tone.pcA.localDescription);
+        const answer = await tone.pcB.createAnswer();
+        await tone.pcB.setLocalDescription(answer);
+        await tone.pcA.setRemoteDescription(tone.pcB.localDescription);
+        tone.osc.start();
+        log('tone startet (videospor: ' + withVideo + ')');
+
+        $('toneBtn').textContent = 'Stop tone';
+        $('tonePauseBtn').hidden = false;
+        $('tonePauseBtn').textContent = 'Pause';
+        tone.stateTimer = setInterval(updateToneState, 500);
+        updateToneState();
+      } catch (e) {
+        fail('startTone', e);
+        await stopTone();
+      }
+      updateReport();
+    }
+
+    function updateToneState() {
+      if (!tone.pcA) {
+        $('toneState').textContent = 'Ikke startet.';
+        $('toneState').className = 'state';
+        return;
+      }
+      const el = tone.audio;
+      const sink = el && typeof el.sinkId !== 'undefined' ? JSON.stringify(el.sinkId) : '—';
+      $('toneState').textContent =
+        `Forbindelse: ${tone.pcA.connectionState}/${tone.pcB.connectionState} · ` +
+        `lyd: ${el ? (el.paused ? 'pauset' : 'spiller') : 'ikke modtaget'} · sinkId: ${sink}`;
+    }
+
+    async function stopTone() {
+      if (tone.stateTimer) clearInterval(tone.stateTimer);
+      if (tone.timer) clearInterval(tone.timer);
+      tone.stateTimer = tone.timer = null;
+      try { if (tone.osc) tone.osc.stop(); } catch (_) { /* allerede stoppet */ }
+      if (tone.ac) tone.ac.close().catch(() => {});
+      if (tone.pcA) tone.pcA.close();
+      if (tone.pcB) tone.pcB.close();
+      tone.ac = tone.osc = tone.pcA = tone.pcB = null;
+      if (tone.audio) tone.audio.remove();
+      if (tone.video) tone.video.remove();
+      tone.audio = tone.video = null;
+      $('toneBtn').textContent = 'Start tone';
+      $('tonePauseBtn').hidden = true;
+      updateToneState();
+      log('tone stoppet');
+      updateReport();
+    }
+
+    // ── Test 4: lokal mikrofon-loopback ────────────────────────────────────
+
+    const mic = { stream: null, audio: null };
+
+    async function startMic() {
+      await stopMic();
+      try {
+        mic.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mic.audio = document.createElement('audio');
+        mic.audio.autoplay = true;
+        mic.audio.playsInline = true;
+        mic.audio.id = 'micAudio';
+        mic.audio.volume = 0.6;
+        mic.audio.srcObject = mic.stream;
+        $('micMedia').appendChild(mic.audio);
+        await mic.audio.play().catch((e) => fail('mic audio.play', e));
+        await applySinkTo(mic.audio);
+        $('micBtn').hidden = true;
+        $('micMuteBtn').hidden = false;
+        $('micReleaseBtn').hidden = false;
+        $('micMuteBtn').textContent = 'Sluk (mute)';
+        $('micState').textContent = 'Mikrofon aktiv — spor: ' + mic.stream.getAudioTracks().length;
+        log('mikrofon startet');
+        await refreshDevices();
+      } catch (e) {
+        $('micState').textContent = fail('getUserMedia(audio)', e);
+        $('micState').className = 'state err';
+      }
+      updateReport();
+    }
+
+    function toggleMicMute() {
+      if (!mic.stream) return;
+      const tracks = mic.stream.getAudioTracks();
+      const muted = tracks.every((t) => !t.enabled);
+      tracks.forEach((t) => { t.enabled = muted; });
+      $('micMuteBtn').textContent = muted ? 'Sluk (mute)' : 'Genoptag (unmute)';
+      $('micState').textContent = muted
+        ? 'Mikrofon tændt igen (spor aktivt)'
+        : 'Mikrofon muted — capture kører stadig (track.enabled=false)';
+      log($('micState').textContent);
+      updateReport();
+    }
+
+    function releaseMic() {
+      if (!mic.stream) return;
+      mic.stream.getTracks().forEach((t) => t.stop());
+      if (mic.audio) mic.audio.srcObject = null;
+      $('micState').textContent = 'Mikrofon frigivet — alle spor stoppet (kill switch)';
+      log('mikrofon frigivet: getTracks().forEach(t => t.stop())');
+      updateReport();
+    }
+
+    async function stopMic() {
+      if (mic.stream) mic.stream.getTracks().forEach((t) => t.stop());
+      mic.stream = null;
+      if (mic.audio) mic.audio.remove();
+      mic.audio = null;
+      $('micBtn').hidden = false;
+      $('micMuteBtn').hidden = true;
+      $('micReleaseBtn').hidden = true;
+      $('micState').textContent = 'Ikke startet.';
+      $('micState').className = 'state';
+    }
+
+    // ── Rapport ────────────────────────────────────────────────────────────
+
+    function report() {
+      const el = sinkElements()[0] || null;
+      return {
+        tid: new Date().toISOString(),
+        ua: navigator.userAgent,
+        secureContext: window.isSecureContext,
+        support: support(),
+        devices: devices.map((d) => ({ kind: d.kind, label: d.label, deviceId: d.deviceId, groupId: d.groupId })),
+        audiooutputs: devices.filter((d) => d.kind === 'audiooutput').length,
+        tone: tone.pcA
+          ? {
+              pcA: tone.pcA.connectionState,
+              pcB: tone.pcB.connectionState,
+              audioPaused: tone.audio ? tone.audio.paused : null,
+              sinkId: tone.audio && typeof tone.audio.sinkId !== 'undefined' ? tone.audio.sinkId : null,
+              withVideo: Boolean(tone.video),
+            }
+          : null,
+        mic: mic.stream ? mic.stream.getAudioTracks().map((t) => ({ enabled: t.enabled, readyState: t.readyState })) : null,
+        sinkId: el && typeof el.sinkId !== 'undefined' ? el.sinkId : null,
+        errors,
+        logs,
+      };
+    }
+
+    function updateReport() {
+      $('reportArea').value = JSON.stringify(report(), null, 1);
+    }
+
+    // ── Events ─────────────────────────────────────────────────────────────
+
+    $('toneBtn').addEventListener('click', () => (tone.pcA ? stopTone() : startTone()));
+    $('tonePauseBtn').addEventListener('click', () => {
+      if (!tone.audio) return;
+      if (tone.audio.paused) {
+        tone.audio.play().catch((e) => fail('resume', e));
+        $('tonePauseBtn').textContent = 'Pause';
+      } else {
+        tone.audio.pause();
+        $('tonePauseBtn').textContent = 'Genoptag';
+      }
+    });
+    $('permBtn').addEventListener('click', async () => {
+      try {
+        const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+        s.getTracks().forEach((t) => t.stop());
+        log('mikrofon-tilladelse givet');
+      } catch (e) {
+        fail('getUserMedia (tilladelse)', e);
+      }
+      await refreshDevices();
+    });
+    $('refreshBtn').addEventListener('click', refreshDevices);
+    $('micBtn').addEventListener('click', startMic);
+    $('micMuteBtn').addEventListener('click', toggleMicMute);
+    $('micReleaseBtn').addEventListener('click', releaseMic);
+    $('sinkApplyBtn').addEventListener('click', applySinkToAll);
+    $('sinkSelect').addEventListener('change', applySinkToAll);
+    $('clearLogBtn').addEventListener('click', () => {
+      logs.length = 0;
+      $('log').textContent = '';
+      updateReport();
+    });
+    $('copyReportBtn').addEventListener('click', async () => {
+      const text = $('reportArea').value;
+      try {
+        await navigator.clipboard.writeText(text);
+        $('copyReportBtn').textContent = 'Kopieret ✓';
+      } catch (_) {
+        $('reportArea').select();
+        document.execCommand('copy');
+        $('copyReportBtn').textContent = 'Kopieret (fallback)';
+      }
+      setTimeout(() => { $('copyReportBtn').textContent = 'Kopiér rapport'; }, 2000);
+    });
+
+    navigator.mediaDevices.addEventListener?.('devicechange', () => {
+      log('devicechange');
+      refreshDevices();
+    });
+
+    // Test-hook til e2e/automatisering.
+    window.__audioDebug = { report, support, startTone, stopTone, startMic, releaseMic, refreshDevices };
+
+    renderEnv();
+    refreshDevices();
+    updateReport();
+    log('side indlæst');
+  </script>
+</body>
+</html>

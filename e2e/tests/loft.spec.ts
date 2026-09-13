@@ -127,3 +127,51 @@ test('skærmdeling når frem (fake stream)', async ({ browser }) => {
     return !!d && d.screenOn;
   }, undefined, { timeout: 5000 });
 });
+
+// Fund 2026-09-12: WebRTC-lyden gik ud af telefonens højttaler i stedet for
+// Bluetooth-earpluggene. Vælgeren dukker kun op hvor browseren eksponerer
+// audiooutput-enheder (desktop Firefox/Chromium — ikke Android).
+test('lydudgang kan vælges og sættes på fjernlyden (setSinkId)', async ({ browser }) => {
+  const alice = await newParticipant(browser);
+  const bob = await newParticipant(browser, true);
+
+  const id = await createLoft(alice.page, uniqueName('alice'));
+  await joinLoft(bob.page, uniqueName('bob'), id);
+  await expectConnected(alice.page);
+  await expectConnected(bob.page);
+
+  // Bob får først output-listen når mikrofonen (og dermed tilladelsen) er der.
+  await bob.page.click('#micBtn');
+  await expect(bob.page.locator('#grid audio')).toHaveCount(1, { timeout: 10000 });
+
+  // Enhedslisten fyldes asynkront efter tilladelsen — vent kort på den, men
+  // fejl ikke på runners uden lydenheder (der findes ingen audiooutput der).
+  const debug = await bob.page.evaluate(async () => {
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      const d = (window as any).__loftDebug?.();
+      if (d && (!d.sinkSupported || d.outputDevices.length > 0)) return d;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return (window as any).__loftDebug();
+  });
+  test.skip(!debug.sinkSupported, 'browseren har ikke HTMLMediaElement.setSinkId');
+  test.skip(!debug.sinkSelectable, 'browseren eksponerer ingen vælgbare audiooutput-enheder');
+
+  await expect(bob.page.locator('#sinkWrap')).toBeVisible({ timeout: 10000 });
+  const choices: string[] = await bob.page.$$eval('#sinkSelect option', (els) =>
+    els.map((e) => (e as HTMLOptionElement).value),
+  );
+  const deviceId = choices.find((v) => v);
+  expect(deviceId).toBeTruthy();
+
+  await bob.page.selectOption('#sinkSelect', deviceId!);
+  await bob.page.waitForFunction(
+    (want) => {
+      const el = document.querySelector<HTMLAudioElement>('#grid audio');
+      return !!el && el.sinkId === want;
+    },
+    deviceId,
+    { timeout: 5000 },
+  );
+});
