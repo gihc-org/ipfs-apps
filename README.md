@@ -201,7 +201,9 @@ Mikrofonen tændes med **🎙 Tænd mikrofon**, og et tryk på **Sluk mikrofon**
 frigiver sporet igen, hvorefter lyden er tilbage i earpluggene. Mens man taler,
 vælger Android stadig kommunikationsruten; det er en platformsegenskab, ikke
 noget frontenden kan omgå (Firefox sætter ikke Bluetooth-headsettet som
-communication device).
+communication device). Frontenden advarer derfor på Android, når mikrofonen
+tændes. Afbøderinger og detaljerne står i
+[TODO.md](TODO.md#kendt-begrænsning-talende-brugere-på-android-bekræftet-2026-09-13).
 
 ```bash
 # Kun diagnostik-tests (ingen backend nødvendig)

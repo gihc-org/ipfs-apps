@@ -325,6 +325,31 @@ For en bruger der *taler* er der ingen klientside-vej: så længe capture er
 aktiv, vælger Android kommunikationsruten, og Firefox sætter ikke Bluetooth-
 headsettet som communication device.
 
+### Kendt begrænsning: talende brugere på Android (bekræftet 2026-09-13)
+
+Med "join muted" på plads blev begge ben målt i Loft (laptop + telefon):
+
+- **Telefonens mikrofon slukket** → laptoppens lyd kommer ud af earpluggene,
+  blandet ind oveni podcasten (ingen overtagelse af ruten). ✅ Løsningen virker
+  for lytteren — det var det oprindelige fund.
+- **Telefonens mikrofon tændt** → lyden går til telefonens højttaler og giver
+  rundhyl, altså ikke gennem earpluggene. ❌
+
+Årsagen er den samme kommunikationsrute: så snart der er capture, vælger Android
+opkaldsprofilen, og Firefox (Android) sætter ikke Bluetooth-headsettet som
+communication device. Det kan frontenden ikke omgå — `setSinkId` findes ikke på
+Android (se ovenfor).
+
+Frontenden advarer derfor nu på Android når mikrofonen tændes (statuslinjen
+fortæller at lyden kan gå til højttaleren og at sluk bringer den tilbage til
+earpluggene). Mulige afbøderinger at afprøve:
+
+- Chrome for Android som talekanal (Chrome har egen Bluetooth-håndtering) —
+  virker lyden i earpluggene der, er det en Gecko-begrænsning og grundlag for en
+  bugrapport.
+- Ledningsbaseret headset på telefonen i stedet for Bluetooth.
+- Lade telefonen være lytteren og tale fra en computer i samme loft.
+
 ### Diagnostikværktøj til telefonen
 
 `frontend/audio-debug.html` (åbnes på telefonen, fx

@@ -178,6 +178,11 @@
     const SINK_KEY = 'loft.sinkId';
     const canSetSinkId = typeof HTMLMediaElement.prototype.setSinkId === 'function';
 
+    // På Android ruter Firefox WebRTC-lyden til telefonens højttaler så længe der
+    // er et aktivt mikrofon-spor (kommunikationsruten; setSinkId findes ikke der,
+    // jf. TODO). Det giver rundhyl for en talende bruger, så vi advarer.
+    const isAndroid = /Android/i.test(navigator.userAgent);
+
     // Link kan åbne direkte på et loft — feltet præ-udfyldes.
     const initialId = new URLSearchParams(location.search).get('id');
     if (initialId) loftInput.value = initialId;
@@ -650,6 +655,13 @@
         } catch (_) {
           setStatus('Mikrofon blev ikke tilladt i browseren', true);
           return;
+        }
+        if (isAndroid) {
+          setStatus(
+            'Mikrofon tændt — på Android kan modpartens lyd gå til telefonens ' +
+            'højttaler (og give rundhyl), så længe mikrofonen er tændt. Sluk ' +
+            'mikrofonen for at få lyden tilbage i earpluggene.',
+          );
         }
       }
       state.micOn = wantOn;
