@@ -74,7 +74,9 @@ export KUBECONFIG=~/projects/infra/kubeconfig.yml
 kubectl apply -f k8s/test/namespace.yaml
 
 # Engang: gem postgres-adgangskoden i pass (samme mønster som capture).
-PG_PASS="$(openssl rand -base64 24)"
+# Brug et URI-sikkert alfabet — koden indlejres i DATABASE_URL nedenfor
+# (se "Kendte faldgruber").
+PG_PASS="$(openssl rand -hex 24)"
 printf '%s' "$PG_PASS" | pass insert -m loft/postgres-password
 
 # Idempotent oprettelse (kubectl create secret er ikke idempotent alene).
@@ -212,6 +214,16 @@ gamle chat-records.
 - **Ingress-logs**: loft-id'et er adgangsnøglen, så del aldrig fulde URL'er
   med `id=`-parameteren i fejlrapporter.
 
+- **Postgres-adgangskoden skal være URI-sikker.** Den bruges både som
+  `POSTGRES_PASSWORD` og indlejret i
+  `database-url=postgres://loft:<kode>@postgres:5432/loftdb`, så tegnene
+  `/ ? # % @ :` og mellemrum skal percent-encodes — eller undgås helt.
+  `openssl rand -base64 24` rammer `/` med ca. 1/3 sandsynlighed og brækker
+  dermed URL'en, så brug `openssl rand -hex 24` (kun `0-9a-f`). Vil du have
+  symboler med (fx fra `pwgen -y`), skal koden percent-encodes før den lægges
+  i `database-url`. Postgres selv har ingen begrænsning på tegnene; grænsen
+  ligger i URI'en, shell-quotingen og `kubectl --from-literal`.
+
 ## Prod-deploy (`loft.gihc.online`)
 
 Samme kæde som test (trin 0–8), men i namespace `loft-prod` og med egne
@@ -225,7 +237,7 @@ Forskelle fra test:
 bash scripts/create-dns-record.sh loft          # → loft.gihc.online
 
 # 2. Eget postgres-password (må ikke deles med test)
-PROD_PG_PASS="$(openssl rand -base64 24)"
+PROD_PG_PASS="$(openssl rand -hex 24)"
 printf '%s' "$PROD_PG_PASS" | pass insert -m loft/prod-postgres-password
 kubectl apply -f k8s/prod/namespace.yaml
 kubectl -n loft-prod create secret generic loft-secrets \
