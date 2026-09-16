@@ -13,11 +13,11 @@ This file provides guidance to AI coding agents working in this repository.
 
 ## Workflow
 
-`scripts/check.sh` kører semantisk review af staged ændringer mod guidelines og ADRs ovenfor. Det køres automatisk som pre-commit hook ved hvert commit.
+`scripts/check.sh` kører semantisk review af staged ændringer mod guidelines og ADRs ovenfor (`.guidelines` er et soft-link til `~/projects/guidelines`). Det er tænkt som pre-commit hook ved hvert commit — hooket er ikke installeret i dette checkout, så kør det manuelt indtil da.
 
 Kør manuelt: `bash scripts/check.sh`
 
-## Nuværende tilstand (2026-09-09)
+## Nuværende tilstand (2026-09-16)
 
 Projektet er midt i refokuseringen fra chat til **Loft** (WebRTC link-rum med
 gæsteadgang) og migreres fra Caddy + Docker Compose til k3s. Indholdet nedenfor
@@ -27,14 +27,17 @@ arkitektur og er historisk indtil M5-oprydningen.
 Læs først: [README.md](README.md), [MIGRATION.md](MIGRATION.md),
 [TODO.md](TODO.md) og ADR-drafts i `adr-drafts/` (0027, 0028).
 
-- Branch `feat/loft-k3s-refocus` — M0–M3 er færdige; næste fase er M4
-  (k3s-deploy af `loft-test`).
+- M0–M4 er færdige, og grenen `feat/loft-k3s-refocus` er merget til `trunk`
+  (begge på `2816181`). Testmiljøet `loft.test.gihc.online` er accepteret i
+  hånden; prod-deployet af `loft.gihc.online` er i gang (DNS-record, namespace
+  `loft-prod` og `loft-secrets` oprettet 2026-09-16 — applikationen mangler).
 - Backend ligger i `chat/` (omdøbes til `loft/` i M5): `POST/GET/DELETE
   /v1/lofts`, WS `/v1/ws/:loft_id`, `/healthz`, TTL-cleanup.
 - Frontend: `frontend/loft.html` + `frontend/rtc.js` (mesh). `index.html`
   redirecter til loft.html; legacy chat-sider findes stadig i mappen.
-- k8s-manifester: `k8s/test/` (namespace `loft-test`). GitHub Actions bygger
-  `ghcr.io/gihc-org/loft` og `loft-web` samt kører e2e.
+- k8s-manifester: `k8s/test/` (namespace `loft-test`) og `k8s/prod/` (pinnet
+  SHA-tag). GitHub Actions bygger `ghcr.io/gihc-org/loft` og `loft-web` ved push
+  til `trunk` og kører e2e (kun Chromium — cargo-testene køres manuelt).
 
 ## Project Overview
 

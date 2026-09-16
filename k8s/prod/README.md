@@ -1,8 +1,9 @@
 # k8s/prod — Loft produktionsmiljø
 
 Spejling af [k8s/test/](../test/README.md) for `loft.gihc.online` i namespace
-`loft-prod`. **Ikke deployet endnu** — manifesterne er forberedt og klar, og
-tages i brug når testmiljøet har været accepteret i hånden. Trin-for-trin står i
+`loft-prod`. Testmiljøet er accepteret i hånden, og prod-deployet er i gang:
+DNS-recorden, namespace `loft-prod` og `loft-secrets` blev oprettet 2026-09-16,
+så kun apply af applikationen og cert mangler. Trin-for-trin står i
 [runbooks/loft-deploy.md](../../runbooks/loft-deploy.md) under "Prod-deploy".
 
 Forskelle fra test:
@@ -21,16 +22,18 @@ egen coturn i prod-manifesterne — én instans pr. node er hele pointen.
 
 ## Før deploy
 
-1. Opret DNS-recorden: `bash scripts/create-dns-record.sh loft` (idempotent).
-2. Opret `loft-secrets` i `loft-prod` med en **egen** postgres-adgangskode
-   (`pass insert loft/prod-postgres-password`) — prod må ikke dele
-   database-credentials med test.
+1. DNS-recorden — udført 2026-09-16: `bash scripts/create-dns-record.sh loft`
+   (idempotent; `A loft.gihc.online` → 65.109.233.92).
+2. `loft-secrets` i `loft-prod` med en **egen** postgres-adgangskode — udført
+   2026-09-16 (`pass insert loft/prod-postgres-password`; prod må ikke dele
+   database-credentials med test).
 3. Tjek at image-SHA'en i `deployment-api.yaml` og `deployment-web.yaml` er det
    tag CI har bygget på `trunk` (`curl -s
    https://ghcr.io/v2/gihc-org/loft/tags/list` med et anonymt token).
 4. `configmap.yaml` peger allerede på platformens TURN. Hvis platformens
    secret er roteret, skal `TURN_SECRET` opdateres her:
-   `~/projects/infra/scripts/turn-config.sh --config-js`.
+   `~/projects/infra/scripts/turn-config.sh --config-js`. (Verificeret i sync
+   2026-09-16.)
 
 ## Apply
 

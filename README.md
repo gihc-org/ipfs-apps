@@ -5,9 +5,11 @@ lad andre joine med lyd, video og skærmdeling. Ingen konti, ingen app-install:
 linket er adgangsnøglen, og deltageren vælger selv et navn.
 
 > Status: under refokusering fra en generel chat-app til Loft samt migrering
-> fra Caddy + Docker Compose til k3s. M1–M3 er færdige (backend, frontend og
-> Playwright-e2e) og testet lokalt; M4 — deploy af testmiljøet — er i gang. Se
-> [MIGRATION.md](MIGRATION.md), [TODO.md](TODO.md) og
+> fra Caddy + Docker Compose til k3s. M0–M4 er færdige: backend, frontend,
+> Playwright-e2e og k3s-testmiljøet `loft.test.gihc.online`, som er accepteret
+> i hånden. Prod-deployet af `loft.gihc.online` er i gang — DNS-record, namespace
+> `loft-prod` og `loft-secrets` er oprettet (2026-09-16), selve applikationen
+> mangler. Se [MIGRATION.md](MIGRATION.md), [TODO.md](TODO.md) og
 > [runbooks/loft-deploy.md](runbooks/loft-deploy.md).
 
 ## Koncept
@@ -46,7 +48,7 @@ frontend/            Statisk frontend (loft.html + rtc.js; legacy chat-sider til
 chat/                Rust/Axum-backend (Loft-kernen)
 e2e/                 Playwright-tests (mod lokal backend eller deployet miljø)
 k8s/test/            Manifester til test-miljø (loft-test)
-k8s/prod/            Manifester til prod (forberedt, ikke deployet)
+k8s/prod/            Manifester til prod (i gang: DNS + secret på plads)
 scripts/             DNS-record, smoke-test og fremtidige driftsscripts
 adr-drafts/          ADR-udkast (0027 link-rum/k3s, 0028 mesh)
 MIGRATION.md         Migrerings- og refokeringsplan
@@ -238,7 +240,9 @@ Planen står i [MIGRATION.md](MIGRATION.md). Kort fortalt:
 - Manifester: [k8s/test/](k8s/test/README.md) — namespace `loft-test`, postgres
   + PVC, api/web og ingress med WS-timeouts. TURN ligger i platformen
   (`~/projects/infra`, namespace `coturn`).
-- Prod-manifester (forberedt, ikke deployet): [k8s/prod/](k8s/prod/README.md).
+- Prod-manifester: [k8s/prod/](k8s/prod/README.md) — dels deployet 2026-09-16
+  (DNS-record, namespace `loft-prod` og `loft-secrets`); apply af applikationen
+  og cert mangler.
 - Trin-for-trin: [runbooks/loft-deploy.md](runbooks/loft-deploy.md) — DNS,
   secret, apply, cert (staging → prod), smoke-test, rollback.
 - Secrets: `pass` → `kubectl create secret loft-secrets` (ingen hemmeligheder
@@ -273,6 +277,8 @@ Se [TODO.md](TODO.md):
 - **M4 (færdig):** k3s-deploy af test-miljø — inkl. accepteret relay-sti mod
   platformens delte TURN (`turn.gihc.online`)
 - **M5:** oprydning af chat-stak (compose/ansible/caddy/IPFS) og gamle domæner
-- **Åbent:** lyd-routing på telefoner (Bluetooth-earplugs vs. højttaler —
-  diagnostikside og `setSinkId`-vælger er klar, selve telefon-testen mangler) og
-  prod-deploy — se [TODO.md](TODO.md)
+- **Åbent:** prod-deploy af `loft.gihc.online` (apply, cert, smoke-test) og
+  lyd-routing for **talende** brugere på Android — lyttere er dækket af
+  "join muted" og capture-frigivelse, mens en talende bruger får modpartens lyd
+  i telefonens højttaler. Se
+  [TODO.md](TODO.md#kendt-begrænsning-talende-brugere-på-android-bekræftet-2026-09-13).

@@ -1,7 +1,9 @@
 # Migration af chat til k3s + refokus til Loft — plan
 
-Status: 2026-09-09 (historik-afsnit tilføjet 2026-09-11) · branch
-`feat/loft-k3s-refocus`
+Status: 2026-09-16 · M0–M4 er gennemført, grenen er merget til `trunk`, og
+prod-deployet af `loft.gihc.online` er i gang (DNS-record, namespace `loft-prod`
+og `loft-secrets` er på plads; applikationen mangler). Beslutningerne nedenfor
+er fra 2026-09-09, og historik-afsnittet er tilføjet 2026-09-11.
 
 Dette dokument afløser den tidligere k3s-plan (2026-08-01) og er skrevet sammen
 med beslutningen om at fokusere projektet: chat-appen bliver **Loft** — WebRTC
@@ -60,7 +62,7 @@ Forudsætninger og platform-tilstand står i `../infra/MIGRATION.md` — vigtigs
 | API-image | `ghcr.io/gihc-org/loft` |
 | Web-image | `ghcr.io/gihc-org/loft-web` |
 | Namespace (test) | `loft-test` |
-| Manifester | `k8s/test/` (prod: `k8s/prod/`, forberedt men ikke deployet) |
+| Manifester | `k8s/test/` (prod: `k8s/prod/`, dels deployet 2026-09-16) |
 | DNS-script | `scripts/create-dns-record.sh` |
 
 ## Historisk: sådan deployede vi før GHCR (Caddy + compose)
@@ -171,8 +173,9 @@ Konsekvenser for M4:
 - **Databasemigrationer** kører embedded ved app-start (`sqlx::migrate!`) —
   ingen separat Job nødvendig.
 - **Ingress-routing:** backend nester selv på `/v1`; frontend på `/`. Ingen
-  path-rewrites. Link-preview/OG er en åben M2-beslutning: backend-rendret
-  `/h/:id`-landing (anbefalet) eller generiske og-tags i web-nginx.
+  path-rewrites. Link-preview/OG er fortsat et åbent punkt (se M2 i
+  [TODO.md](TODO.md)): backend-rendret `/h/:id`-landing (anbefalet) eller
+  generiske og-tags i web-nginx.
 - **GHCR-pakker er private som standard** — gør dem public manuelt første
   gang, ellers skal der `imagePullSecrets` til.
 - **Rollback:** deploy med SHA-tag; `kubectl set image deployment/loft-api
