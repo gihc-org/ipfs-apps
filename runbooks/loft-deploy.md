@@ -14,7 +14,7 @@ brugeren før de køres.
 # kubeconfig peger på 127.0.0.1:6443 — API'et er ikke eksponeret offentligt,
 # så SSH-tunnelen skal være åben (samme mønster som hyfer/capture).
 ssh -L 6443:localhost:6443 -N -f root@65.109.233.92
-export KUBECONFIG=~/projects/infra/kubeconfig.yml
+export KUBECONFIG="${KUBECONFIG:-$HOME/.kube/gihc.yml}"
 kubectl get nodes
 ```
 
@@ -70,7 +70,7 @@ Det betyder for deployet her:
 ## 3. Secret `loft-secrets`
 
 ```bash
-export KUBECONFIG=~/projects/infra/kubeconfig.yml
+export KUBECONFIG="${KUBECONFIG:-$HOME/.kube/gihc.yml}"
 kubectl apply -f k8s/test/namespace.yaml
 
 # Engang: gem postgres-adgangskoden i pass (samme mønster som capture).
