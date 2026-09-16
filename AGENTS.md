@@ -27,9 +27,9 @@ arkitektur og er historisk indtil M5-oprydningen.
 Læs først: [README.md](README.md), [MIGRATION.md](MIGRATION.md),
 [TODO.md](TODO.md) og ADR-drafts i `adr-drafts/` (0027, 0028).
 
-- M0–M4 er færdige, og grenen `feat/loft-k3s-refocus` er merget til `trunk`
-  (begge på `2816181`). Testmiljøet `loft.test.gihc.online` er accepteret i
-  hånden; prod-deployet af `loft.gihc.online` er i gang (DNS-record, namespace
+- M0–M4 er færdige, og grenen `feat/loft-k3s-refocus` er merget til `trunk` og
+  pushet (begge på `d082905`). Testmiljøet `loft.test.gihc.online` er accepteret
+  i hånden; prod-deployet af `loft.gihc.online` er i gang (DNS-record, namespace
   `loft-prod` og `loft-secrets` oprettet 2026-09-16 — applikationen mangler).
 - Backend ligger i `chat/` (omdøbes til `loft/` i M5): `POST/GET/DELETE
   /v1/lofts`, WS `/v1/ws/:loft_id`, `/healthz`, TTL-cleanup.

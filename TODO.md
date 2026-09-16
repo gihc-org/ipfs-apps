@@ -13,9 +13,11 @@ genbruges.
 
 Kopér blokken herunder som første besked til agenten:
 
-> Fortsæt arbejdet på **Loft** (M0–M4 færdige). Testmiljøet kører på
-> `loft.test.gihc.online` og er accepteret i hånden; arbejdet er merget til
-> `trunk` (`2816181`), og CI bygger `ghcr.io/gihc-org/loft{,-web}` ved push.
+> Fortsæt arbejdet på **Loft** (M0–M4 færdige). Alt er merget til `trunk` og
+> pushet (`d082905`); CI bygger `ghcr.io/gihc-org/loft{,-web}` ved push. Start
+> en **frisk session** frem for at genoptage en gammel: de tidligere sessioner
+> er meget tunge (den forrige sendte ~286.000 tokens pr. request og ramte
+> "idle timeout waiting for SSE"), og alt nødvendigt står i filerne herunder.
 >
 > Læs først `README.md`, `MIGRATION.md`, `TODO.md` og ADR-drafts
 > `0027-loft-link-rooms.md` + `0028-loft-group-mesh.md`. AGENTS.md's
@@ -29,29 +31,36 @@ Kopér blokken herunder som første besked til agenten:
 >   Migrationer kører automatisk ved start.
 > - Frontend: `frontend/loft.html` + `frontend/rtc.js` (mesh, perfect
 >   negotiation). `index.html` redirecter til loft.html.
-> - k8s: `k8s/test/` (namespace `loft-test`) — postgres + PVC, api, web og
->   ingress, kørende på CI-image `2816181…`. `k8s/prod/` er pinnet til samme
->   SHA og **dels deployet**: DNS-record, namespace `loft-prod` og
->   `loft-secrets` blev oprettet 2026-09-16; apply og cert mangler.
+> - Testmiljø: `k8s/test/` (namespace `loft-test`) — postgres + PVC, api, web
+>   og ingress — kører på `loft.test.gihc.online` med CI-image `2816181…` og er
+>   accepteret i hånden (smoke-test 18/18, e2e 9 passed / 2 skipped i både
+>   Chromium og Firefox).
+> - Prod: `k8s/prod/` er pinnet til samme SHA og **dels deployet** — DNS-record,
+>   namespace `loft-prod` og `loft-secrets` blev oprettet 2026-09-16. Se
+>   afsnittet "Prod-deploy" nedenfor for hvad der mangler.
 > - TURN er flyttet til platformen: `turn.gihc.online` (namespace `coturn` i
 >   `~/projects/infra`, ADR 0003), hærdet og med `--denied-peer-ip` + kvoter.
 >   Appen har ingen egen coturn længere — `config.js` peger på den fælles
 >   instans, og `TURN_SECRET` rendres fra `pass turn/static-auth-secret`
 >   (verificeret i sync med prod-configmap'en 2026-09-16).
-> - e2e kører mod det deployede miljø i **både Chromium og Firefox**
->   (`npm run test:test` / `npm run test:test:firefox`) — senest 9 passed /
->   2 skipped hver 2026-09-13; de to TURN-tests kræver `TURN_URL`.
+> - e2e (`npm run test:test` / `npm run test:test:firefox`) kører mod det
+>   deployede miljø i **både Chromium og Firefox**; de to TURN-tests kræver
+>   `TURN_URL` og er derfor de eneste der springes over som standard.
 >
 > Næste opgaver, i denne rækkefølge:
 > 1. Færdiggør prod-deployet af `loft.gihc.online` efter
 >    `runbooks/loft-deploy.md` under "Prod-deploy": apply `k8s/prod/`
 >    (configmap først), følg rollouts, cert staging → verificér →
 >    `letsencrypt-prod`, derefter smoke-test og `npm run test:beta`.
+>    SSH-tunnelen til k3s skal være åben:
+>    `ssh -o ServerAliveInterval=20 -L 6443:localhost:6443 -N -f hetzner-k3s`.
 > 2. Talende brugere på Android: modpartens lyd går i telefonens højttaler
 >    (lyttere er dækket af "join muted" og capture-frigivelse). Afbøderinger
 >    står i afsnittet "Kendt begrænsning: talende brugere på Android".
 > 3. M5-oprydning: slet compose-/ansible-/caddy-/IPFS-rester, omdøb `chat/` til
->    `loft/`, og opdater `runbooks/`, `AGENTS.md` og ADR-index.
+>    `loft/`, opdater `runbooks/`, `AGENTS.md` og ADR-index, og flyt ADR-drafts
+>    0027/0028 til `~/projects/adrs/` efter en opdatering (coturn ligger nu i
+>    platformen, og `presence`-beskeder findes ikke i koden).
 > Adgang til k3s/pass/infra-repoet kræver brugerens godkendelse — spørg før
 > trin uden for repoet.
 >
@@ -61,17 +70,21 @@ Kopér blokken herunder som første besked til agenten:
 > - E2e (backend kørende): `cd e2e && TEST_API_URL=http://localhost:8081 npx playwright test`
 > - E2e mod deployet miljø: `npm run test:test` (Chromium) og
 >   `npm run test:test:firefox` (kræver `npx playwright install firefox` én gang)
+> - TURN-relay mod et miljø: `cd e2e && TURN_URL="$(~/projects/infra/scripts/turn-config.sh --url)" TURN_SECRET="$(pass turn/static-auth-secret)" BASE_URL=https://loft.test.gihc.online npx playwright test tests/turn.spec.ts`
 >
 > Gotchas: `TEST_API_URL` uden `/v1`; `frontend/config.js` overskrives i k8s af
 > ConfigMap; mikrofonen starter **ikke** ved join (se "Lyd-routing på
 > telefoner"), så e2e tænder den eksplicit og en peer-forbindelse etableres
 > først når nogen deler medier; headless Playwright spiller stadig testlyd —
-> begge browsere er dæmpet i `playwright.config.ts`.
+> begge browsere er dæmpet i `playwright.config.ts`; `.guidelines` er et
+> soft-link til `~/projects/guidelines`, og `scripts/check.sh` springer reviewet
+> over ("fail open"), hvis `claude`-kaldet ikke kan komme på nettet.
 
 ## Branche og CI (afsluttet 2026-09-13)
 
-- Grenen er merget til `trunk` og pushet; alle tre refs stod på `2816181`
-  (`trunk`, `feat/loft-k3s-refocus`, `origin/trunk`). CI har bygget begge
+- Grenen er merget til `trunk` og pushet; alle refs stod på `2816181`
+  (`trunk`, `feat/loft-k3s-refocus`, `origin/trunk`), og efter
+  dokumentationspushet 2026-09-16 står de på `d082905`. CI har bygget begge
   images: `ghcr.io/gihc-org/loft{,-web}` med tag
   `28161813015adf4f27fdcb57c774e3fedc67f550` (verificeret anonymt mod GHCR's
   tags-API, da `gh` ikke er installeret i agentmiljøet). `loft-web` er rullet i
@@ -80,8 +93,9 @@ Kopér blokken herunder som første besked til agenten:
   `workflow_dispatch`. Det har tre jobs: `api`, `web` og `e2e` — e2e-jobbet
   kører Playwright på Chromium mod en lokal postgres + backend, og
   **cargo-testene køres ikke i CI** (se det åbne punkt under M3).
-- To commits ligger kun lokalt ovenpå `2816181`: `98bef4a` (prod-pin) og
-  `2008e82` (URI-sikker postgres-adgangskode i runbooken).
+- 2026-09-16: `98bef4a` (prod-pin), `2008e82` (URI-sikker postgres-adgangskode i
+  runbooken) og `d082905` (statusopdatering af dokumentationen) er pushet til
+  `trunk`.
 - Historik (2026-09-12): indtil merge lå arbejdet på `feat/loft-k3s-refocus`
   foran `origin/trunk` (der stod på `f83722c`), og der blev ikke bygget images,
   fordi workflowet kun udløses af push til `trunk`.
@@ -214,8 +228,11 @@ Følger [runbooks/loft-deploy.md](runbooks/loft-deploy.md) under "Prod-deploy".
 - [ ] Cert: `letsencrypt-staging` → verificér → `letsencrypt-prod`
 - [ ] Smoke-test (`scripts/smoke-test.sh https://loft.gihc.online
       --namespace loft-prod`) og e2e (`npm run test:beta`)
-- [ ] Push de to lokale commits (`98bef4a`, `2008e82`) — udløser et nyt
-      CI-build; ikke nødvendigt for deployet, da images med `2816181…` findes
+- [x] Push af de tre lokale commits (`98bef4a`, `2008e82`, `d082905`) — gjort
+      2026-09-16; udløser et nyt CI-build, men deployet kan bruge de
+      eksisterende images med `2816181…`, da koden er uændret
+- [ ] (Valgfrit) pin `k8s/prod/` til det nyeste CI-SHA efter
+      dokumentationspushet — koden er uændret, så `2816181…` virker stadig
 
 ## M5 — Oprydning
 
