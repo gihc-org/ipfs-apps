@@ -1,9 +1,11 @@
 # Migration af chat til k3s + refokus til Loft — plan
 
 Status: 2026-09-16 · M0–M4 er gennemført, grenen er merget til `trunk`, og
-prod-deployet af `loft.gihc.online` er i gang (DNS-record, namespace `loft-prod`
-og `loft-secrets` er på plads; applikationen mangler). Beslutningerne nedenfor
-er fra 2026-09-09, og historik-afsnittet er tilføjet 2026-09-11.
+prod-deployet af `loft.gihc.online` er **gennemført** (namespace `loft-prod`,
+pinnet SHA-tag `d082905…`, betroet cert samt grøn smoke-test og e2e i begge
+browsere). Tilbage er Android-lydrouting for talende brugere og M5-oprydningen.
+Beslutningerne nedenfor er fra 2026-09-09, og historik-afsnittet er tilføjet
+2026-09-11.
 
 Dette dokument afløser den tidligere k3s-plan (2026-08-01) og er skrevet sammen
 med beslutningen om at fokusere projektet: chat-appen bliver **Loft** — WebRTC

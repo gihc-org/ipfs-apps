@@ -230,6 +230,11 @@ Samme kæde som test (trin 0–8), men i namespace `loft-prod` og med egne
 secrets. Manifesterne ligger klar i [k8s/prod/](../k8s/prod/README.md) og
 deployes **først efter** at testmiljøet er accepteret i hånden.
 
+Status: **gennemført 2026-09-16**. Rækkefølgen nedenfor er den der blev kørt:
+configmap → resten af `k8s/prod/` → rollouts → cert (staging → verificér →
+`letsencrypt-prod`) → smoke-test → e2e. Resultaterne står i
+[k8s/prod/README.md](../k8s/prod/README.md#status).
+
 Forskelle fra test:
 
 ```bash

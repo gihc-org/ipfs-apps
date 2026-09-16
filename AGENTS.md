@@ -29,8 +29,10 @@ Læs først: [README.md](README.md), [MIGRATION.md](MIGRATION.md),
 
 - M0–M4 er færdige, og grenen `feat/loft-k3s-refocus` er merget til `trunk` og
   pushet (begge på `d082905`). Testmiljøet `loft.test.gihc.online` er accepteret
-  i hånden; prod-deployet af `loft.gihc.online` er i gang (DNS-record, namespace
-  `loft-prod` og `loft-secrets` oprettet 2026-09-16 — applikationen mangler).
+  i hånden, og `loft.gihc.online` blev deployet 2026-09-16 (namespace
+  `loft-prod`, pinnet image-SHA `d082905…`, cert fra `letsencrypt-prod`,
+  smoke-test 19/19 og e2e grøn i Chromium og Firefox). Tilbage: Android-lyd
+  for talende brugere og M5-oprydningen.
 - Backend ligger i `chat/` (omdøbes til `loft/` i M5): `POST/GET/DELETE
   /v1/lofts`, WS `/v1/ws/:loft_id`, `/healthz`, TTL-cleanup.
 - Frontend: `frontend/loft.html` + `frontend/rtc.js` (mesh). `index.html`

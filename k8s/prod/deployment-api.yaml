@@ -20,7 +20,7 @@ spec:
         - name: loft-api
           # Prod deployes på SHA-tag (ikke latest), så rollback er
           # `kubectl set image` til det forrige tag. Bumpes ved hver promote.
-          image: ghcr.io/gihc-org/loft:28161813015adf4f27fdcb57c774e3fedc67f550
+          image: ghcr.io/gihc-org/loft:d0829054baf36b22316bebb599efcaa8c79deeeb
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080

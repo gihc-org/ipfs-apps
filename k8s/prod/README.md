@@ -1,9 +1,9 @@
 # k8s/prod — Loft produktionsmiljø
 
 Spejling af [k8s/test/](../test/README.md) for `loft.gihc.online` i namespace
-`loft-prod`. Testmiljøet er accepteret i hånden, og prod-deployet er i gang:
-DNS-recorden, namespace `loft-prod` og `loft-secrets` blev oprettet 2026-09-16,
-så kun apply af applikationen og cert mangler. Trin-for-trin står i
+`loft-prod`. **Deployet 2026-09-16** og pinnet til CI-SHA'en `d082905…`; cert
+fra `letsencrypt-prod`, smoke-test 19/19 og e2e grøn i Chromium og Firefox
+(inkl. TURN-relay). Trin-for-trin står i
 [runbooks/loft-deploy.md](../../runbooks/loft-deploy.md) under "Prod-deploy".
 
 Forskelle fra test:
@@ -34,6 +34,20 @@ egen coturn i prod-manifesterne — én instans pr. node er hele pointen.
    secret er roteret, skal `TURN_SECRET` opdateres her:
    `~/projects/infra/scripts/turn-config.sh --config-js`. (Verificeret i sync
    2026-09-16.)
+
+## Status
+
+| Trin | Resultat 2026-09-16 |
+|---|---|
+| Rollouts | `loft-postgres`, `loft-api` og `loft-web` "successfully rolled out" |
+| Cert | `loft-gihc-online-tls`, issuer `letsencrypt-prod`, gyldigt til 2026-12-15 |
+| HTTPS | `/healthz` → 200 med `ssl_verify_result` 0 |
+| Smoke-test | `scripts/smoke-test.sh https://loft.gihc.online --namespace loft-prod` → 19/19 |
+| e2e | Chromium 9 passed / 2 skipped; Firefox 11/11; TURN-relay 2/2 (`relay/relay`) |
+
+Prod-pinnen blev efter dokumentationspushet flyttet fra `2816181…` til
+`d082905…` (samme kildekode) med `kubectl apply` — så det kørende image matcher
+`trunk`. Rollback er `kubectl -n loft-prod set image`.
 
 ## Apply
 

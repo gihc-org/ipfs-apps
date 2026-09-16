@@ -7,10 +7,11 @@ linket er adgangsnøglen, og deltageren vælger selv et navn.
 > Status: under refokusering fra en generel chat-app til Loft samt migrering
 > fra Caddy + Docker Compose til k3s. M0–M4 er færdige: backend, frontend,
 > Playwright-e2e og k3s-testmiljøet `loft.test.gihc.online`, som er accepteret
-> i hånden. Prod-deployet af `loft.gihc.online` er i gang — DNS-record, namespace
-> `loft-prod` og `loft-secrets` er oprettet (2026-09-16), selve applikationen
-> mangler. Se [MIGRATION.md](MIGRATION.md), [TODO.md](TODO.md) og
-> [runbooks/loft-deploy.md](runbooks/loft-deploy.md).
+> i hånden. **Prod er deployet** 2026-09-16: `loft.gihc.online` kører
+> CI-image `d082905…` med betroet Let's Encrypt-cert og gennemført smoke-test
+> samt e2e i Chromium og Firefox. Tilbage er Android-lydrouting for **talende**
+> brugere og M5-oprydningen af chat-stakken. Se [MIGRATION.md](MIGRATION.md),
+> [TODO.md](TODO.md) og [runbooks/loft-deploy.md](runbooks/loft-deploy.md).
 
 ## Koncept
 
@@ -240,9 +241,10 @@ Planen står i [MIGRATION.md](MIGRATION.md). Kort fortalt:
 - Manifester: [k8s/test/](k8s/test/README.md) — namespace `loft-test`, postgres
   + PVC, api/web og ingress med WS-timeouts. TURN ligger i platformen
   (`~/projects/infra`, namespace `coturn`).
-- Prod-manifester: [k8s/prod/](k8s/prod/README.md) — dels deployet 2026-09-16
-  (DNS-record, namespace `loft-prod` og `loft-secrets`); apply af applikationen
-  og cert mangler.
+- Prod-manifester: [k8s/prod/](k8s/prod/README.md) — deployet 2026-09-16 til
+  namespace `loft-prod` med pinnet SHA-tag (`d082905…`), betroet cert fra
+  `letsencrypt-prod` og verificeret med smoke-test (19/19) samt e2e i Chromium
+  og Firefox (11/11 med TURN).
 - Trin-for-trin: [runbooks/loft-deploy.md](runbooks/loft-deploy.md) — DNS,
   secret, apply, cert (staging → prod), smoke-test, rollback.
 - Secrets: `pass` → `kubectl create secret loft-secrets` (ingen hemmeligheder
@@ -276,9 +278,13 @@ Se [TODO.md](TODO.md):
 - **M3 (færdig):** Playwright-e2e + CI
 - **M4 (færdig):** k3s-deploy af test-miljø — inkl. accepteret relay-sti mod
   platformens delte TURN (`turn.gihc.online`)
-- **M5:** oprydning af chat-stak (compose/ansible/caddy/IPFS) og gamle domæner
-- **Åbent:** prod-deploy af `loft.gihc.online` (apply, cert, smoke-test) og
-  lyd-routing for **talende** brugere på Android — lyttere er dækket af
-  "join muted" og capture-frigivelse, mens en talende bruger får modpartens lyd
-  i telefonens højttaler. Se
+- **Prod (færdig 2026-09-16):** `loft.gihc.online` kører `d082905…` — apply,
+  cert (staging → verificér → `letsencrypt-prod`), smoke-test 19/19 og e2e
+  (Chromium 9 passed / 2 skipped uden `TURN_URL`; Firefox og TURN-kørslerne
+  11/11)
+- **M5:** oprydning af chat-stak (compose/ansible/caddy/IPFS), omdøbning af
+  `chat/` til `loft/` samt opdatering af runbooks, `AGENTS.md` og ADR-index
+- **Åbent:** lyd-routing for **talende** brugere på Android — lyttere er dækket
+  af "join muted" og capture-frigivelse, mens en talende bruger får modpartens
+  lyd i telefonens højttaler. Se
   [TODO.md](TODO.md#kendt-begrænsning-talende-brugere-på-android-bekræftet-2026-09-13).
