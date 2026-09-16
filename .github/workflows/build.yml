@@ -27,8 +27,8 @@ jobs:
       # Rust-build er langsom — GHA-cache genbruges mellem runs.
       - uses: docker/build-push-action@v6
         with:
-          context: ./chat
-          file: ./chat/Dockerfile
+          context: ./loft
+          file: ./loft/Dockerfile
           push: true
           tags: |
             ghcr.io/gihc-org/loft:${{ github.sha }}
@@ -88,7 +88,7 @@ jobs:
 
       - name: Build backend
         run: cargo build
-        working-directory: chat
+        working-directory: loft
 
       - name: Install e2e deps
         working-directory: e2e
@@ -98,9 +98,9 @@ jobs:
 
       - name: Start backend
         run: |
-          cd chat
+          cd loft
           DATABASE_URL=postgres://postgres:postgres@localhost:5432/loftdb \
-            PORT=8080 nohup ./target/debug/chat > /tmp/loft-api.log 2>&1 &
+            PORT=8080 nohup ./target/debug/loft > /tmp/loft-api.log 2>&1 &
           for i in $(seq 1 30); do
             curl -sf http://localhost:8080/healthz && exit 0
             sleep 1

@@ -19,191 +19,162 @@ Kør manuelt: `bash scripts/check.sh`
 
 ## Nuværende tilstand (2026-09-16)
 
-Projektet er midt i refokuseringen fra chat til **Loft** (WebRTC link-rum med
-gæsteadgang) og migreres fra Caddy + Docker Compose til k3s. Indholdet nedenfor
-under "Project Overview" og "Current stack: Chat" beskriver den **gamle**
-arkitektur og er historisk indtil M5-oprydningen.
+Loft er etableret: WebRTC link-rum med gæsteadgang, kørende på k3s i både test
+(`loft.test.gihc.online`, namespace `loft-test`) og prod (`loft.gihc.online`,
+namespace `loft-prod`, pinnet CI-SHA `d082905…`, cert fra `letsencrypt-prod`).
+M0–M4 og prod-deployet er færdige, og M5-oprydningen er gennemført i repoet:
+`chat/` hedder nu `loft/`, og compose-, ansible-, caddy- og IPFS-resterne er
+slettet. Tilbage er at flytte ADR-drafts 0027/0028 til `~/projects/adrs/` samt
+Android-lyd for **talende** brugere (kendt platformsegenskab, se
+[TODO.md](TODO.md)).
+
+Den gamle chat-arkitektur (konti/JWT, DM, filoverførsel, Caddy + Docker Compose,
+IPFS/DNSLink) er ude af den aktive sti; historikken står i
+[MIGRATION.md](MIGRATION.md).
 
 Læs først: [README.md](README.md), [MIGRATION.md](MIGRATION.md),
-[TODO.md](TODO.md) og ADR-drafts i `adr-drafts/` (0027, 0028).
-
-- M0–M4 er færdige, og grenen `feat/loft-k3s-refocus` er merget til `trunk` og
-  pushet (begge på `d082905`). Testmiljøet `loft.test.gihc.online` er accepteret
-  i hånden, og `loft.gihc.online` blev deployet 2026-09-16 (namespace
-  `loft-prod`, pinnet image-SHA `d082905…`, cert fra `letsencrypt-prod`,
-  smoke-test 19/19 og e2e grøn i Chromium og Firefox). Tilbage: Android-lyd
-  for talende brugere og M5-oprydningen.
-- Backend ligger i `chat/` (omdøbes til `loft/` i M5): `POST/GET/DELETE
-  /v1/lofts`, WS `/v1/ws/:loft_id`, `/healthz`, TTL-cleanup.
-- Frontend: `frontend/loft.html` + `frontend/rtc.js` (mesh). `index.html`
-  redirecter til loft.html; legacy chat-sider findes stadig i mappen.
-- k8s-manifester: `k8s/test/` (namespace `loft-test`) og `k8s/prod/` (pinnet
-  SHA-tag). GitHub Actions bygger `ghcr.io/gihc-org/loft` og `loft-web` ved push
-  til `trunk` og kører e2e (kun Chromium — cargo-testene køres manuelt).
+[TODO.md](TODO.md), [runbooks/loft-deploy.md](runbooks/loft-deploy.md) og
+ADR-drafts i `adr-drafts/` (0027, 0028).
 
 ## Project Overview
 
-IPFS-hosted static frontend combined with a self-hosted backend on a VPS. The frontend is served via DNSLink (own domain mapped to an IPFS CID), which gives a stable origin for CORS.
-
-## Current stack: Chat
-
-```
-frontend/          Vanilla JS static site — deployed to IPFS
-chat/              Rust (Axum) backend — WebSocket + REST
-caddy/             Reverse proxy — TLS (Let's Encrypt) + routing
-ansible/           Server provisioning and deployment
-docker-compose.yml Full stack definition
-.env.example       Environment variable template
-```
-
-### Architecture
+Man opretter et loft, deler URL'en (Matrix/XMPP/mail), og modtageren joiner med
+lyd, video og skærmdeling uden konto. Loft-id'et er adgangsnøglen, og
+deltageren vælger selv et vist navn. Et loft lever videre efter at skaberen går,
+indtil det lukkes af ejeren eller udløber via TTL.
 
 ```
-IPFS frontend (DNSLink → chat.apps.gihc.online)
+frontend/          Statisk frontend (nginx-image): loft.html + rtc.js
+loft/              Rust (Axum) backend — REST + WebSocket (omdøbt fra chat/ i M5)
+e2e/               Playwright-tests (lokal backend eller deployet miljø)
+k8s/test/          Manifester for loft.test.gihc.online (namespace loft-test)
+k8s/prod/          Manifester for loft.gihc.online (namespace loft-prod, SHA-pin)
+scripts/           DNS-record, smoke-test (REST+WS+DB), semantisk review
+runbooks/          Drift, fejlfinding og deploy
+adr-drafts/        ADR-udkast 0027 (link-rum/k3s) og 0028 (mesh)
+.github/workflows/ CI: bygger begge images og kører e2e på Chromium
+```
+
+### Arkitektur
+
+```
+Browser (loft.gihc.online — frontend, /v1 og WS på samme origin)
     │
-    └── api.gihc.online  →  Caddy  →  chat:8001 (Axum, Rust)
-                                           │
-                                       PostgreSQL
+    └── ingress-nginx ──► loft-api (Axum, Rust) ──► PostgreSQL (kun lofts-tabellen)
+                              │
+                              └── in-memory deltagere/presence → præcis 1 replica
+
+Browser ◄──── WebRTC mesh (lyd/video/skærm, P2P) ────► Browser
+    └── turn.gihc.online (platformens delte coturn, se ~/projects/infra ADR 0003)
 ```
 
-### Chat backend (`chat/`)
+Serveren relayer kun signaler og ved aldrig, hvad der tales/ses. TURN bruges kun,
+når en direkte forbindelse fejler bag NAT.
 
-- **Framework:** Axum 0.7 with `ws` feature
-- **Database:** SQLx 0.8 + PostgreSQL (runtime API, not compile-time `query!` macro)
-- **Auth:** Argon2id password hashing, JWT via `jsonwebtoken` (HS256)
-- **Email verification:** Required before login — Resend API sends a link to `GET /v1/auth/verify?token=<uuid>`
-- **CAPTCHA:** Cloudflare Turnstile on registration — `chat/src/captcha.rs` validates against `https://challenges.cloudflare.com/turnstile/v0/siteverify` (v0, not v1)
-- **External HTTP:** `reqwest 0.12` with `rustls-tls` feature — client stored in `AppState.http`
-- **WebSocket:** one `tokio::sync::broadcast` channel per room, stored in `AppState.rooms: RoomMap`
-- **Migrations:** `sqlx::migrate!("./migrations")` — embedded at compile time, run on startup
-- **CORS:** `tower_http::cors::CorsLayer`, configured via `ALLOWED_ORIGIN` env var
-- **TLS:** uses `rustls` (not `native-tls`) — no OpenSSL dependency needed to compile
+### Backend (`loft/`)
 
-#### Crate structure
+- **Framework:** Axum 0.7 med `ws`-feature; `tower_governor` til rate limiting på loft-oprettelse
+- **Database:** SQLx 0.8 + PostgreSQL (runtime API, ikke compile-time `query!` — ADR 0002)
+- **Migrationer:** `sqlx::migrate!("./migrations")` — embedded ved compile time, kører ved start
+- **WebSocket:** én `tokio::sync::broadcast`-kanal pr. loft (ADR 0006)
+- **TLS/HTTP:** rustls, ingen OpenSSL-afhængighed (ADR 0003)
+- **CORS:** `ALLOWED_ORIGIN` er kun relevant ved lokal kørsel — i k8s deler frontend, `/v1` og WS origin
 
-`chat/src/lib.rs` is the library root — it owns all module declarations and exports `AppState`, `Config`, `RoomMap`, `build_app`, and `build_cors`. `src/main.rs` is a thin binary entrypoint that calls into the lib. This split lets integration tests import the crate.
+#### Crate-struktur
 
-#### Modules
+`loft/src/lib.rs` er biblioteksroden og ejer module erklæringer samt `AppState`,
+`Config`, `LoftRegistry`, `LoftChannelMap`, `build_app` og
+`cleanup_expired_lofts`; `src/main.rs` er en tynd binær indgang, der læser
+`PORT` og kalder `build_app`. Splittet gør integrationstests mulige (ADR 0004).
+Kraten og binæren hedder `loft`.
 
-| Module | Purpose |
-|--------|---------|
-| `auth` | JWT creation/validation, Argon2id hashing, `authenticate()` helper |
-| `captcha` | Turnstile token validation (skipped if `TURNSTILE_SECRET` is empty) |
-| `email` | Resend API wrapper for verification emails (skipped if `RESEND_API_KEY` is empty) |
-| `models` | `User` struct with email verification fields |
-| `routes/auth` | register, login, me, verify handlers |
-| `routes/rooms` | room list and creation |
-| `ws` | WebSocket handler |
+| Modul | Formål |
+|-------|--------|
+| `config` | env-konfiguration: `DATABASE_URL`, `ALLOWED_ORIGIN`, `LOFT_TTL_HOURS` |
+| `models` | `Loft`-rækken (id, navn, created_at, last_active) |
+| `routes/health` | `/healthz` til k8s-probes |
+| `routes/lofts` | `POST`/`GET`/`DELETE /v1/lofts`, `cleanup_expired_lofts` og `ws_handler` |
+| `state` | in-memory loft-registry: broadcast-kanaler og deltagere (unit-tests her) |
 
-#### API surface
-| Method | Path | Auth |
-|--------|------|------|
-| POST | /v1/auth/register | — |
-| POST | /v1/auth/token | — |
-| GET | /v1/auth/me | Bearer |
-| GET | /v1/auth/verify?token=\<uuid\> | — |
-| GET | /v1/rooms | Bearer |
-| POST | /v1/rooms | Bearer |
-| GET | /v1/rooms/:id/messages | Bearer |
-| GET | /v1/users | Bearer |
-| GET | /v1/dms | Bearer |
-| POST | /v1/dms | Bearer |
-| WS | /v1/ws/:room_id?token=\<jwt\> | query param |
+#### API-flade
 
-#### Auth
-`auth::authenticate(&state, &headers).await?` validates the Bearer token and returns the `User`. Call it at the top of any handler that requires authentication.
+| Metode | Sti | Auth |
+|--------|-----|------|
+| GET | `/healthz` | — |
+| POST | `/v1/lofts` | — (rate-limited) |
+| GET | `/v1/lofts/:id` | — |
+| DELETE | `/v1/lofts/:id` | `X-Owner-Token` |
+| WS | `/v1/ws/:loft_id` | loft-id'et i stien |
 
-The WebSocket handler uses a query param (`?token=<jwt>`) instead of a header because the browser WebSocket API cannot set custom headers on the upgrade request.
+Der er ingen konti: loft-id'et (tilfældig UUID) er capability. `owner_token`
+returneres kun ved oprettelse, lækkes ikke af `GET`, og bruges til at lukke
+loftet. WebSocket-protokollen (`join`, `roster`, `join`/`leave`, `media-state`,
+`signal` med server-stemplet `from`, `closed`) er beskrevet i
+[README.md](README.md).
 
-#### Environment variables
+#### Miljøvariabler
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `DATABASE_URL` | required | PostgreSQL connection string |
-| `JWT_SECRET` | required | HMAC key for JWT signing |
-| `ALLOWED_ORIGIN` | `*` | CORS allowed origin |
-| `TURNSTILE_SECRET` | `` | Cloudflare Turnstile secret key (empty = skip CAPTCHA) |
-| `RESEND_API_KEY` | `` | Resend email API key (empty = auto-verify accounts) |
-| `RESEND_FROM` | `noreply@example.com` | Sender address for verification emails |
-| `BASE_URL` | `http://localhost:8001` | Public URL of the API (used in email links) |
-| `FRONTEND_URL` | `http://localhost:8001` | Public URL of the frontend (used in redirect after email verify) |
+| Variabel | Default | Formål |
+|----------|---------|--------|
+| `DATABASE_URL` | required | PostgreSQL-forbindelse |
+| `ALLOWED_ORIGIN` | `*` | CORS — kun relevant ved lokal kørsel |
+| `LOFT_TTL_HOURS` | `168` | TTL før inaktive lofts ryddes |
+| `PORT` | `8080` | Lytte-port (lokal udvikling bruger 8081, se README) |
+
+Hemmeligheder kommer fra `pass` og oprettes som k8s-secretet `loft-secrets`
+(`postgres-password`, `database-url`) — aldrig i git.
 
 #### Tests
 
 ```bash
-# Unit tests (no database needed)
-cargo test --lib
+# Enhedstests (ingen database)
+cd loft && cargo test --lib
 
-# Integration tests (requires a running PostgreSQL instance)
-DATABASE_URL=postgres://user:password@localhost:5432 cargo test
+# Integrationstests (kræver en kørende PostgreSQL)
+cd loft && DATABASE_URL=postgres://postgres:postgres@localhost:5432 cargo test
 ```
 
-Unit tests live in `src/auth.rs` (JWT, hashing) and `src/ws.rs` (broadcast channels).
-Integration tests in `tests/api.rs` use `#[sqlx::test]` which creates and tears down a temporary database per test.
+Unit-testene ligger i `loft/src/state.rs` (broadcast-kanaler pr. loft).
+Integrationstestene i `loft/tests/api.rs` bruger `#[sqlx::test]`, som opretter og
+river en midlertidig database ned pr. test. **Cargo-testene kører ikke i CI** —
+CI-jobbet dækker kun e2e på Chromium, så kør dem manuelt.
 
 ### Frontend (`frontend/`)
 
-Three pages: `index.html` (login/register), `rooms.html` (room list), `chat.html` (WebSocket chat). No framework — vanilla JS. API base URL and WebSocket URL are in `config.js`.
+`loft.html` (lobby + rum), `rtc.js` (mesh med perfect negotiation — ADR-draft
+0028) og `audio-debug.html` (telefon-diagnostik). Ingen framework — vanilla JS.
+`index.html` redirecter til `loft.html` og bevarer query-strengen.
+`config.js` indeholder API-, WS- og TURN-URL'er og **overskrives i k8s** af
+ConfigMap'en (`k8s/{test,prod}/configmap.yaml`); repo-filen gælder kun lokalt.
 
-`config.js` indeholder produktions-URL'erne (`api.gihc.online`). Til lokal udvikling skiftes til `http://localhost:8001` og `ws://localhost:8001`.
+Mikrofonen starter **ikke** ved join ("join muted"), og "Sluk mikrofon" frigiver
+capture helt (`track.stop()` og sporet fjernes fra peer-forbindelserne): et
+aktivt mikrofon-spor flytter hele telefonens medierute til opkaldsprofil. På
+Android findes ingen output-device-API, så en **talende** bruger får modpartens
+lyd i telefonens højttaler — det kan frontenden ikke omgå. Afbøderinger og
+målinger står i [README.md](README.md) og [TODO.md](TODO.md).
 
-Turnstile widget bruger `https://challenges.cloudflare.com/turnstile/v0/api.js` (v0). Submit-knappen er disabled indtil Turnstile `callback` fyrer — undgår race condition ved async script-load.
+### Deploy (k3s)
 
-### Ansible (`ansible/`)
-
-Provisioner og deployer backend til VPS (65.109.233.92). Deploy er fuldt automatiseret — inkl. IPFS-upload og DNS-opdatering hos Simply.com.
-
-```bash
-# Første gang
-ansible-galaxy collection install -r ansible/requirements.yml
-
-# Deploy
-ansible-playbook ansible/playbook.yml -i ansible/inventory.yml --ask-vault-pass
-```
-
-Playbook'en:
-1. Synkroniserer projektet til VPS
-2. Bygger og starter Docker Compose-services
-3. Uploader `frontend/` til IPFS og gemmer CID
-4. Kalder Simply.com API og opdaterer `_dnslink.chat.apps.gihc.online` automatisk
-
-- `group_vars/all/vars.yml` — ikke-hemmelige variable (domæne, e-mail, simply_account osv.)
-- `group_vars/all/vault.yml` — krypterede hemmeligheder: `vault_postgres_password`, `vault_jwt_secret`, `vault_turnstile_secret`, `vault_resend_api_key`, `vault_simply_account`, `vault_simply_api_key`
-- `templates/Caddyfile.j2` — Caddyfile renderet med domæne (Caddy understøtter ikke `{env.VAR}` i site-adresser)
-- `templates/env.j2` — `.env` fil til Docker Compose
-
-#### Simply.com DNS API
-Simply.com eksponerer en REST API på `https://api.simply.com/2/` med HTTP Basic Auth (kontonummer + API-nøgle). Playbook'en bruger `uri`-modulet til at GET records, finde den eksisterende `_dnslink`-record og PUT den nye CID. Credentials hentes fra vault (`vault_simply_account`, `vault_simply_api_key`).
-
-## Running locally
-
-```bash
-cp .env.example .env
-# Sæt POSTGRES_PASSWORD og JWT_SECRET
-docker compose up --build
-```
-
-`docker-compose.override.yml` bruges automatisk lokalt: HTTP-only Caddy, chat eksponeret på port 8001.
-
-I produktion (ingen override):
-```bash
-docker compose -f docker-compose.yml up -d --build
-```
-
-Rust-imaget bruger two-stage build (`rust:1-slim` builder, `debian:bookworm-slim` runtime). Første build er langsom pga. dependency-kompilering. Ingen OpenSSL-afhængighed — rustls compileres statisk ind.
-
-### Deploying frontend til IPFS
-
-Sker automatisk via Ansible-playbook. Manuelt ved lokal test:
-
-```bash
-ipfs add -r frontend/
-# DNS opdateres nu automatisk af playbook'en via Simply.com API
-```
+- Images: `ghcr.io/gihc-org/loft` (API) og `ghcr.io/gihc-org/loft-web`
+  (frontend), bygget af `.github/workflows/build.yml` ved push til `trunk`
+  (SHA-tags + `latest`).
+- Manifester: `k8s/test/` (image `:latest`, `Always`) og `k8s/prod/` (pinnet
+  SHA-tag, `IfNotPresent`). Apply-rækkefølge, cert-skift (staging → verificér →
+  `letsencrypt-prod`) og rollback står i
+  [runbooks/loft-deploy.md](runbooks/loft-deploy.md).
+- Verifikation: `scripts/smoke-test.sh <origin> --namespace <ns>` dækker REST,
+  WebSocket, lukning med ejer-nøgle og at DB-rækken er væk. Playwright kører mod
+  deployet miljø med `npm run test:test` (test), `test:beta` (prod) og
+  `test:test:firefox`.
+- TURN er platformens (`turn.gihc.online`): `config.js` rendres med
+  `~/projects/infra/scripts/turn-config.sh --config-js`, og firewall/kvoter ejes
+  også af infra-repoet.
 
 ## Key decisions
 
-Arkitektoniske beslutninger er dokumenteret som ADR'er i `~/projects/adrs/`. Listen nedenfor viser hvilke ADR'er dette projekt følger:
+Arkitektoniske beslutninger er dokumenteret som ADR'er i `~/projects/adrs/`.
+Beslutninger der stadig gælder for Loft:
 
 | ADR | Beslutning |
 |-----|------------|
@@ -211,26 +182,34 @@ Arkitektoniske beslutninger er dokumenteret som ADR'er i `~/projects/adrs/`. Lis
 | [0002](~/projects/adrs/0002-sqlx-runtime-api.md) | SQLx runtime API over compile-time macros |
 | [0003](~/projects/adrs/0003-rustls-over-native-tls.md) | rustls over native-tls |
 | [0004](~/projects/adrs/0004-lib-bin-split.md) | lib + bin split til integration tests |
-| [0005](~/projects/adrs/0005-authenticate-plain-async-fn.md) | authenticate som plain async fn |
-| [0006](~/projects/adrs/0006-broadcast-channel-per-room.md) | Broadcast channel per WebSocket room |
-| [0007](~/projects/adrs/0007-jwt-query-param-websocket.md) | JWT via query-parameter til WebSocket |
-| [0008](~/projects/adrs/0008-ipfs-dnslink-frontend.md) | IPFS + DNSLink til frontend |
-| [0009](~/projects/adrs/0009-caddy-reverse-proxy.md) | Caddy som reverse proxy |
-| [0010](~/projects/adrs/0010-ansible-templates-caddyfile.md) | Ansible-templates til Caddyfile |
-| [0011](~/projects/adrs/0011-argon2id-passwords.md) | Argon2id til password-hashing |
+| [0005](~/projects/adrs/0005-authenticate-plain-async-fn.md) | Plain async fn frem for extractor |
+| [0006](~/projects/adrs/0006-broadcast-channel-per-room.md) | Broadcast channel per loft |
 | [0012](~/projects/adrs/0012-feature-flags-via-empty-env.md) | Tom env-variabel som feature flag |
 | [0013](~/projects/adrs/0013-owasp-by-default.md) | OWASP-sikkerhed som del af definition of done |
-| [0014](~/projects/adrs/0014-gdpr-and-cis-docker.md) | GDPR og CIS Docker Benchmark |
-| [0015](~/projects/adrs/0015-gdpr-deletion-strategy-and-smoke-test.md) | GDPR-sletningstrategi og post-deploy smoke test |
-| [0016](~/projects/adrs/0016-webrtc-screen-sharing.md) | WebRTC skærmdeling via eksisterende WebSocket |
-| [0017](~/projects/adrs/0017-ansible-infra-deploy-split.md) | Opdeling af Ansible i infrastruktur og applikationsdeploy |
-| [0018](~/projects/adrs/0018-webrtc-audio-call.md) | WebRTC lyd-opkald i DM-rum — delt RTCPeerConnection med skærmdeling |
+| [0014](~/projects/adrs/0014-gdpr-principles.md) | GDPR-principper |
+| [0015](~/projects/adrs/0015-gdpr-deletion-pattern.md) | Slettestrategi og post-deploy smoke test |
+| [0024](~/projects/adrs/0024-cis-docker-benchmark.md) | CIS Docker Benchmark (non-root, read-only fs) |
+| [0025](~/projects/adrs/0025-ipfs-apps-smoke-test.md) | Smoke test af deployet miljø |
+| [0026](~/projects/adrs/0026-logging-and-secrets.md) | Logging og secrets |
+| `adr-drafts/0027` | Loft: link-rum med gæsteadgang på k3s — afløser 0008–0010 og 0019 |
+| `adr-drafts/0028` | Loft: mesh-topologi og per-deltager-signalering — afløser 0016 og 0018 |
 
 ### Projekt-specifikke detaljer
 
-Disse er ikke generelle nok til ADR'er, men vigtige for dette projekt:
-
-- **`authenticate` as plain async fn:** Rust 1.88 tightened lifetime rules for async fns in traits, breaking the `FromRequestParts` extractor approach
-- **Turnstile v0 URL:** Cloudflare Turnstile uses `/v0/` paths for both `api.js` and `siteverify` — `/v1/` returnerer 404/405 og fejler lydløst
-- **`reqwest` without `form` feature:** reqwest 0.12 removed the `form` feature flag — `.form()` metoden er altid tilgængelig uden at angive den
-- **Simply.com API for DNS:** Ansible `uri`-modul kalder Simply.com REST API direkte — ingen ekstern Terraform-provider eller Ansible-collection nødvendig
+- **TURN ligger i platformen:** der kan kun køre én coturn pr. node (to
+  instanser binder begge 3478 via `SO_REUSEPORT` og fordeler trafikken
+  tilfældigt). Firewall og misbrugsbeskyttelse ejes af `~/projects/infra`
+  (ADR 0003 der), og appen har ingen egen coturn.
+- **`TURN_SECRET` er reelt offentlig:** den udleveres til browseren. Modvægten er
+  coturns kvoter og `--denied-peer-ip`, ikke hemmeligholdelse. Følg-op: udsted
+  kortlivede credentials fra API'et.
+- **Én replica:** lofts, deltagere og WebSocket-kanaler er in-memory. `Recreate`
+  bruges ved deploy, fordi PVC'en er ReadWriteOnce og rolling updates ville
+  droppe WS-forbindelser — frontendens auto-reconnect dækker afbrydelsen.
+- **WS-timeouts:** ingress-nginx har `proxy-read-timeout`/`proxy-send-timeout` =
+  3600 på WebSocket-ruten.
+- **Ingress-routing:** `/healthz` har sin egen rute (ellers svarer
+  web-frontenden 404); `/v1` og `/` routes uden path-rewrites.
+- **`TEST_API_URL` uden `/v1`** i e2e, og `BASE_URL` peger på frontenden.
+- **Simply.com DNS API:** `scripts/create-dns-record.sh` kalder
+  `https://api.simply.com/2/` med HTTP Basic Auth (konto + nøgle fra `pass`).

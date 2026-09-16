@@ -1,9 +1,0 @@
----
-# Komplet opsætning — infrastruktur + deploy i én kørsel.
-# Brug kun ved første gangs provisioning af en ny server.
-#
-# Ved efterfølgende releases bruges deploy.yml alene:
-#   ansible-playbook ansible/deploy.yml -i ansible/inventory.yml --ask-vault-pass
-
-- import_playbook: infra.yml
-- import_playbook: deploy.yml

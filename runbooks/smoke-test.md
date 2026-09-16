@@ -41,7 +41,7 @@ sletter loftet, hvis et tidligere trin fejler.
 ## Kør lokalt mod `cargo run`
 
 ```bash
-cd chat && DATABASE_URL=postgres://postgres:postgres@localhost:5432 cargo run   # 0.0.0.0:8080
+cd loft && DATABASE_URL=postgres://postgres:postgres@localhost:5432 cargo run   # 0.0.0.0:8080
 ./scripts/smoke-test.sh http://localhost:8080
 ```
 

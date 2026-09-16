@@ -21,8 +21,8 @@ RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/
 RUN useradd --uid 10001 --create-home appuser
 
 WORKDIR /app
-COPY --from=builder /app/target/release/chat .
+COPY --from=builder /app/target/release/loft .
 
 USER appuser
 
-CMD ["./chat"]
+CMD ["./loft"]

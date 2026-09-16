@@ -1,6 +1,11 @@
-# OWASP Security Review — ipfs-apps/chat
+# OWASP Security Review — ipfs-apps/chat *(historisk)*
 
 Gennemgang pr. 2026-05-05 baseret på OWASP Top 10 (2021) og ASVS.
+
+> **Historisk (2026-09-16):** gennemgangen dækker chat-appen og dens
+> Caddy/Ansible-stak, som er fjernet i M5. Konkrete fund, der stadig er åbne for
+> Loft, spores i [TODO.md](TODO.md) under "Sikkerhed" — brug denne fil som
+> baggrund, ikke som gældende status.
 
 ---
 

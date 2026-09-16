@@ -1,4 +1,4 @@
-use chat::{build_app, cleanup_expired_lofts, AppState, Config};
+use loft::{build_app, cleanup_expired_lofts, AppState, Config};
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 

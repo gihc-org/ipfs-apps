@@ -21,11 +21,10 @@ Kopér blokken herunder som første besked til agenten:
 > herunder.
 >
 > Læs først `README.md`, `MIGRATION.md`, `TODO.md` og ADR-drafts
-> `0027-loft-link-rooms.md` + `0028-loft-group-mesh.md`. AGENTS.md's
-> chat-sektioner er historiske indtil M5.
+> `0027-loft-link-rooms.md` + `0028-loft-group-mesh.md`.
 >
 > Tilstand:
-> - Backend (`chat/`, omdøbes til `loft/` i M5): Rust/Axum.
+> - Backend (`loft/`, omdøbt fra `chat/` i M5): Rust/Axum, krate/binær `loft`.
 >   `POST /v1/lofts`, `GET /v1/lofts/:id`, `DELETE /v1/lofts/:id` med
 >   `X-Owner-Token`, WS `/v1/ws/:loft_id`
 >   (join/roster/signal/media-state/closed), `/healthz`, TTL-cleanup.
@@ -48,21 +47,24 @@ Kopér blokken herunder som første besked til agenten:
 >   deployede miljø i **både Chromium og Firefox**; de to TURN-tests kræver
 >   `TURN_URL` og er derfor de eneste der springes over som standard.
 >
+> M5-oprydningen er gennemført i repoet 2026-09-16 (`chat/` → `loft/`,
+> compose-/ansible-/caddy-/IPFS-rester slettet, `AGENTS.md` og runbooks
+> opdateret).
+>
 > Næste opgaver, i denne rækkefølge:
-> 1. Talende brugere på Android: modpartens lyd går i telefonens højttaler
+> 1. Flyt ADR-drafts 0027/0028 til `~/projects/adrs/` efter en opdatering
+>    (coturn ligger nu i platformen, og `presence`-beskeder findes ikke i
+>    koden) — kræver adgang uden for repoet.
+> 2. Talende brugere på Android: modpartens lyd går i telefonens højttaler
 >    (lyttere er dækket af "join muted" og capture-frigivelse). Afbøderinger
 >    står i afsnittet "Kendt begrænsning: talende brugere på Android".
-> 2. M5-oprydning: slet compose-/ansible-/caddy-/IPFS-rester, omdøb `chat/` til
->    `loft/`, opdater `runbooks/`, `AGENTS.md` og ADR-index, og flyt ADR-drafts
->    0027/0028 til `~/projects/adrs/` efter en opdatering (coturn ligger nu i
->    platformen, og `presence`-beskeder findes ikke i koden).
 > Adgang til k3s/pass/infra-repoet kræver brugerens godkendelse — spørg før
 > trin uden for repoet. Til k3s-arbejde skal SSH-tunnelen være åben:
 > `ssh -o ServerAliveInterval=20 -L 6443:localhost:6443 -N -f hetzner-k3s`.
 >
 > Kommandoer:
-> - Unit: `cd chat && cargo test --lib`
-> - Integration: `cd chat && DATABASE_URL=postgres://postgres:postgres@localhost:5432 cargo test`
+> - Unit: `cd loft && cargo test --lib`
+> - Integration: `cd loft && DATABASE_URL=postgres://postgres:postgres@localhost:5432 cargo test`
 > - E2e (backend kørende): `cd e2e && TEST_API_URL=http://localhost:8081 npx playwright test`
 > - E2e mod deployet miljø: `npm run test:test` (Chromium) og
 >   `npm run test:test:firefox` (kræver `npx playwright install firefox` én gang)
@@ -240,18 +242,30 @@ Følger [runbooks/loft-deploy.md](runbooks/loft-deploy.md) under "Prod-deploy".
 - [x] Pin `k8s/prod/` til det nyeste CI-SHA efter dokumentationspushet — rullet
       til `d082905…` 2026-09-16 (samme kildekode som `2816181…`)
 
-## M5 — Oprydning
+## M5 — Oprydning (gennemført 2026-09-16 i repoet)
 
-- [ ] Slet `docker-compose*.yml`, `ansible/`, `caddy/`, `.woodpecker.yaml`
-      og IPFS/DNSLink-rester
+- [x] Slet `docker-compose*.yml`, `ansible/`, `caddy/`, `.woodpecker.yaml`
+      og IPFS/DNSLink-rester — også `runbooks/deploy.md` og
+      `runbooks/ipfs-dns.md` samt de sidste chat-sider i `frontend/`
+      (`chat.html`, `rooms.html`, `forgot.html`, `reset.html`, `privacy.html`,
+      `version-check.js`). `.env.example` og `OWASP-IMPROVEMENTS.md` blev
+      beholdt (førstnævnte bruges til lokal `cargo run`, sidstnævnte er nu
+      markeret historisk)
 - [x] Slet døde DNS-records — 24 records slettet 2026-09-12 (18 A + 6
       `_dnslink`-TXT). Zonen har nu 12 records: kun de fem levende hosts
       (`loft.test`, `hyfer.test`, `capture.test`, `test`, `higgs`) plus
       MX/TXT/NS til mail. Liste med værdier (og CID'er) står i
       `referater/2026-09-12-00-15.md`, hvis en record skal genskabes.
-- [ ] Opdater `runbooks/`, `AGENTS.md` og ADR-index
-- [ ] Omdøb `chat/` til `loft/` og genovervej repoets navn
-- [ ] Referat i `referater/`
+- [x] Opdater `runbooks/`, `AGENTS.md` og ADR-index — `AGENTS.md` er skrevet om
+      til Loft-tilstanden (chat-sektionerne væk), runbooks peger på k3s-flowet,
+      og ADR-tabellen markerer hvilke ADR'er 0027/0028 afløser
+- [x] Omdøb `chat/` til `loft/` — også kraten og binæren (`Cargo.toml`,
+      `Dockerfile`, CI-workflow, `.gitignore`). Repo-navnet `ipfs-apps` står
+      stadig tilbage (kræver ændring uden for repoet)
+- [ ] Flyt ADR-drafts 0027/0028 til `~/projects/adrs/` (kræver adgang uden for
+      repoet — spørg brugeren)
+- [x] Referat i `referater/` — `2026-09-16-17-37.md` (prod-deploy) og
+      `2026-09-16-18-05.md` (M5-oprydning)
 
 ## Sikkerhed (videreført fra chat)
 

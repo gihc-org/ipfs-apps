@@ -45,20 +45,22 @@ der kun kan køre én coturn pr. node.
 ## Repo-struktur
 
 ```
-frontend/            Statisk frontend (loft.html + rtc.js; legacy chat-sider til M5)
-chat/                Rust/Axum-backend (Loft-kernen)
+frontend/            Statisk frontend (loft.html + rtc.js + audio-debug.html)
+loft/                Rust/Axum-backend (Loft-kernen)
 e2e/                 Playwright-tests (mod lokal backend eller deployet miljø)
 k8s/test/            Manifester til test-miljø (loft-test)
-k8s/prod/            Manifester til prod (i gang: DNS + secret på plads)
+k8s/prod/            Manifester til prod (loft-prod, pinnet SHA-tag)
 scripts/             DNS-record, smoke-test og fremtidige driftsscripts
+runbooks/            Drift, fejlfinding og deploy
 adr-drafts/          ADR-udkast (0027 link-rum/k3s, 0028 mesh)
 MIGRATION.md         Migrerings- og refokeringsplan
 TODO.md              Backlog (M0–M5)
 ```
 
-`ansible/`, `caddy/`, `docker-compose*.yml` og `.woodpecker.yaml` er rester af
-Caddy/compose-tiden og slettes i M5 — flowet dengang er beskrevet i
-[MIGRATION.md](MIGRATION.md) under "Historisk: sådan deployede vi før GHCR".
+Caddy/compose-stakken (`ansible/`, `caddy/`, `docker-compose*.yml`,
+`.woodpecker.yaml`) og IPFS/DNSLink-resterne blev fjernet i M5 — flowet dengang
+er beskrevet i [MIGRATION.md](MIGRATION.md) under "Historisk: sådan deployede vi
+før GHCR".
 
 ## API
 
@@ -137,7 +139,7 @@ podman run -d --name loft-dev-pg \
 cp .env.example .env
 
 # 3. Kør backend — migrationer kører automatisk ved start
-cd chat
+cd loft
 DATABASE_URL=postgres://postgres:postgres@localhost:5432 PORT=8081 cargo run
 ```
 
@@ -151,10 +153,10 @@ browseren IPFS-gatewayen i stedet for API'et og får 404/400.
 
 ```bash
 # Enhedstests (ingen database)
-cd chat && cargo test --lib
+cd loft && cargo test --lib
 
 # Integrationstests (kræver PostgreSQL-superuser uden databasenavn)
-cd chat && DATABASE_URL=postgres://postgres:postgres@localhost:5432 cargo test
+cd loft && DATABASE_URL=postgres://postgres:postgres@localhost:5432 cargo test
 
 # E2e (kræver kørende backend)
 cd e2e && TEST_API_URL=http://localhost:8081 npx playwright test
@@ -282,8 +284,10 @@ Se [TODO.md](TODO.md):
   cert (staging → verificér → `letsencrypt-prod`), smoke-test 19/19 og e2e
   (Chromium 9 passed / 2 skipped uden `TURN_URL`; Firefox og TURN-kørslerne
   11/11)
-- **M5:** oprydning af chat-stak (compose/ansible/caddy/IPFS), omdøbning af
-  `chat/` til `loft/` samt opdatering af runbooks, `AGENTS.md` og ADR-index
+- **M5 (færdig 2026-09-16 i repoet):** compose-/ansible-/caddy-/IPFS-rester
+  slettet, `chat/` omdøbt til `loft/` (krate og binær hedder nu `loft`),
+  runbooks/`AGENTS.md` opdateret. Tilbage: flyt ADR-drafts 0027/0028 til
+  `~/projects/adrs/`
 - **Åbent:** lyd-routing for **talende** brugere på Android — lyttere er dækket
   af "join muted" og capture-frigivelse, mens en talende bruger får modpartens
   lyd i telefonens højttaler. Se

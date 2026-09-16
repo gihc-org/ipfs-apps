@@ -3,7 +3,7 @@
 frontend/config.local.js
 
 # Rust
-chat/target/
+loft/target/
 
 # Editor
 .vscode/

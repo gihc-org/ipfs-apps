@@ -135,10 +135,12 @@ Konsekvenser for M4:
    → prod-issuer, smoke-test omskrevet til `kubectl exec` + gæste-loft-flow.
 5. **Beta/prod:** kopiér manifester til `k8s/prod/` (realm/domæner skiftes),
    deploy, skift DNS til `loft.gihc.online`.
-6. **Oprydning:** slet `docker-compose*.yml`, `ansible/`, `caddy/`,
-   `.woodpecker.yaml`, kubo/DNSLink-rester og døde DNS-records
-   (`api.gihc.online`, `chat.apps.gihc.online`, `beta.*`, `test.*`). Opdater
-   `runbooks/`, `AGENTS.md` og ADR-index i `~/projects/adrs/`; skriv referat.
+6. **Oprydning (gennemført 2026-09-16):** `docker-compose*.yml`, `ansible/`,
+   `caddy/`, `.woodpecker.yaml`, kubo/DNSLink-rester og døde DNS-records
+   (`api.gihc.online`, `chat.apps.gihc.online`, `beta.*`, `test.*`) er væk, og
+   `chat/` hedder nu `loft/` (også krate/binær). `runbooks/` og `AGENTS.md` er
+   opdateret. Tilbage: ADR-index — drafts 0027/0028 skal flyttes til
+   `~/projects/adrs/` efter accept.
 
 ## Tekniske noter / gotchas
 
@@ -188,6 +190,7 @@ Konsekvenser for M4:
 ## Efter migrationen
 
 - Flyt accepterede ADR-drafts til `~/projects/adrs/` (nr. 0027 og 0028).
-- Omdøb `chat/`-kataloget til `loft/` når backend-fokuseringen er gennemført,
-  og genovervej repoets navn.
+- ~~Omdøb `chat/`-kataloget til `loft/`~~ — gjort 2026-09-16 (mappe, krate,
+  binær, CI, Dockerfile). Repoets navn (`ipfs-apps`) er stadig fra IPFS-tiden
+  og kræver en ændring uden for repoet, hvis det skal skiftes.
 - Skriv referat i `referater/` efter hver væsentlig session, som sædvanligt.

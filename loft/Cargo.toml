@@ -1,14 +1,14 @@
 [package]
-name = "chat"
+name = "loft"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "chat"
+name = "loft"
 path = "src/lib.rs"
 
 [[bin]]
-name = "chat"
+name = "loft"
 path = "src/main.rs"
 
 [dependencies]
