@@ -116,7 +116,8 @@ Konsekvenser for M4:
 ## Trin-for-trin
 
 0. **Dokumentation (denne gren):** TODO.md + MIGRATION.md omskrevet,
-   ADR-drafts 0027/0028, `k8s/test`-skelet, GitHub Actions-workflow,
+   ADR-drafts 0027/0028 (siden accepteret og flyttet til `~/projects/adrs/`),
+   `k8s/test`-skelet, GitHub Actions-workflow,
    DNS-script og frontend-Dockerfile. Intet deployet endnu.
 1. **Backend (Loft-kerne):** migration `lofts`; `POST /v1/lofts`
    (rate-limited) og `GET /v1/lofts/:id`; WS `/v1/ws/:loft_id` med
@@ -189,7 +190,9 @@ Konsekvenser for M4:
 
 ## Efter migrationen
 
-- Flyt accepterede ADR-drafts til `~/projects/adrs/` (nr. 0027 og 0028).
+- ~~Flyt accepterede ADR-drafts til `~/projects/adrs/`~~ — gjort 2026-09-16
+  (`0027-loft-link-rooms.md` og `0028-loft-group-mesh.md`, markeret Accepted i
+  ADR-repoets index).
 - ~~Omdøb `chat/`-kataloget til `loft/`~~ — gjort 2026-09-16 (mappe, krate,
   binær, CI, Dockerfile). Repoets navn (`ipfs-apps`) er stadig fra IPFS-tiden
   og kræver en ændring uden for repoet, hvis det skal skiftes.

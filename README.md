@@ -9,9 +9,10 @@ linket er adgangsnøglen, og deltageren vælger selv et navn.
 > Playwright-e2e og k3s-testmiljøet `loft.test.gihc.online`, som er accepteret
 > i hånden. **Prod er deployet** 2026-09-16: `loft.gihc.online` kører
 > CI-image `d082905…` med betroet Let's Encrypt-cert og gennemført smoke-test
-> samt e2e i Chromium og Firefox. Tilbage er Android-lydrouting for **talende**
-> brugere og M5-oprydningen af chat-stakken. Se [MIGRATION.md](MIGRATION.md),
-> [TODO.md](TODO.md) og [runbooks/loft-deploy.md](runbooks/loft-deploy.md).
+> samt e2e i Chromium og Firefox. M5-oprydningen er gennemført, og ADR 0027 og
+> 0028 er accepteret i `~/projects/adrs/`. Tilbage er Android-lydrouting for
+> **talende** brugere. Se [MIGRATION.md](MIGRATION.md), [TODO.md](TODO.md) og
+> [runbooks/loft-deploy.md](runbooks/loft-deploy.md).
 
 ## Koncept
 
@@ -52,10 +53,12 @@ k8s/test/            Manifester til test-miljø (loft-test)
 k8s/prod/            Manifester til prod (loft-prod, pinnet SHA-tag)
 scripts/             DNS-record, smoke-test og fremtidige driftsscripts
 runbooks/            Drift, fejlfinding og deploy
-adr-drafts/          ADR-udkast (0027 link-rum/k3s, 0028 mesh)
 MIGRATION.md         Migrerings- og refokeringsplan
 TODO.md              Backlog (M0–M5)
 ```
+
+Arkitekturbeslutninger ligger i det delte ADR-repo: `~/projects/adrs/` (0027
+link-rum/k3s og 0028 mesh er Lofts).
 
 Caddy/compose-stakken (`ansible/`, `caddy/`, `docker-compose*.yml`,
 `.woodpecker.yaml`) og IPFS/DNSLink-resterne blev fjernet i M5 — flowet dengang
@@ -286,7 +289,7 @@ Se [TODO.md](TODO.md):
   11/11)
 - **M5 (færdig 2026-09-16 i repoet):** compose-/ansible-/caddy-/IPFS-rester
   slettet, `chat/` omdøbt til `loft/` (krate og binær hedder nu `loft`),
-  runbooks/`AGENTS.md` opdateret. Tilbage: flyt ADR-drafts 0027/0028 til
+  runbooks/`AGENTS.md` opdateret, og ADR 0027/0028 flyttet til
   `~/projects/adrs/`
 - **Åbent:** lyd-routing for **talende** brugere på Android — lyttere er dækket
   af "join muted" og capture-frigivelse, mens en talende bruger får modpartens

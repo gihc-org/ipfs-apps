@@ -2,8 +2,8 @@
 
 Projektet fokuseres til **Loft**: WebRTC link-rum (lyd, video, skærmdeling)
 med gæsteadgang, delt via link over Matrix/XMPP/mail. Samtidig migreres fra
-Caddy + Docker Compose til k3s. Se [MIGRATION.md](MIGRATION.md) og ADR-drafts i
-`adr-drafts/`.
+Caddy + Docker Compose til k3s. Se [MIGRATION.md](MIGRATION.md) og ADR'erne i
+`~/projects/adrs/` (0027 og 0028).
 
 Afsluttet før refokuseringen (chat-rum, DM, filoverførsel, 1:1-skærmdeling og
 lydopkald) ligger i git-historikken; Playwright- og WebRTC-mønstre derfra
@@ -20,8 +20,9 @@ Kopér blokken herunder som første besked til agenten:
 > ramte "idle timeout waiting for SSE"), og alt nødvendigt står i filerne
 > herunder.
 >
-> Læs først `README.md`, `MIGRATION.md`, `TODO.md` og ADR-drafts
-> `0027-loft-link-rooms.md` + `0028-loft-group-mesh.md`.
+> Læs først `README.md`, `MIGRATION.md`, `TODO.md` og ADR 0027
+> (`~/projects/adrs/0027-loft-link-rooms.md`) + 0028
+> (`~/projects/adrs/0028-loft-group-mesh.md`).
 >
 > Tilstand:
 > - Backend (`loft/`, omdøbt fra `chat/` i M5): Rust/Axum, krate/binær `loft`.
@@ -51,11 +52,11 @@ Kopér blokken herunder som første besked til agenten:
 > compose-/ansible-/caddy-/IPFS-rester slettet, `AGENTS.md` og runbooks
 > opdateret).
 >
-> Næste opgaver, i denne rækkefølge:
-> 1. Flyt ADR-drafts 0027/0028 til `~/projects/adrs/` efter en opdatering
->    (coturn ligger nu i platformen, og `presence`-beskeder findes ikke i
->    koden) — kræver adgang uden for repoet.
-> 2. Talende brugere på Android: modpartens lyd går i telefonens højttaler
+> ADR-drafts er accepteret og flyttet til `~/projects/adrs/` (0027 og 0028,
+> opdateret så coturn ligger i platformen og `presence`-beskederne er væk).
+>
+> Næste opgave:
+> 1. Talende brugere på Android: modpartens lyd går i telefonens højttaler
 >    (lyttere er dækket af "join muted" og capture-frigivelse). Afbøderinger
 >    står i afsnittet "Kendt begrænsning: talende brugere på Android".
 > Adgang til k3s/pass/infra-repoet kræver brugerens godkendelse — spørg før
@@ -108,10 +109,12 @@ Kopér blokken herunder som første besked til agenten:
 
 - [x] Beslutning: Loft link-rum (Plan B), gæsteadgang, statisk frontend
 - [x] TODO.md og MIGRATION.md omskrevet til Loft + k3s
-- [x] ADR-drafts 0027 (link-rum + k3s) og 0028 (mesh-topologi)
+- [x] ADR-drafts 0027 (link-rum + k3s) og 0028 (mesh-topologi) — accepteret og
+      flyttet til `~/projects/adrs/` 2026-09-16
 - [x] `k8s/test/`-skelet, GitHub Actions-workflow, DNS-script,
       frontend-Dockerfile
-- [ ] Flyt ADR-drafts til `~/projects/adrs/` når de er accepteret
+- [x] Flyt ADR-drafts til `~/projects/adrs/` når de er accepteret — gjort
+      2026-09-16
 
 ## M1 — Backend: Loft-kerne
 
@@ -262,8 +265,10 @@ Følger [runbooks/loft-deploy.md](runbooks/loft-deploy.md) under "Prod-deploy".
 - [x] Omdøb `chat/` til `loft/` — også kraten og binæren (`Cargo.toml`,
       `Dockerfile`, CI-workflow, `.gitignore`). Repo-navnet `ipfs-apps` står
       stadig tilbage (kræver ændring uden for repoet)
-- [ ] Flyt ADR-drafts 0027/0028 til `~/projects/adrs/` (kræver adgang uden for
-      repoet — spørg brugeren)
+- [x] Flyt ADR-drafts 0027/0028 til `~/projects/adrs/` — gjort 2026-09-16:
+      begge er markeret Accepted, coturn-afsnittet peger på platformen, og
+      `presence`-beskederne er erstattet af roster/`join`/`leave` +
+      `media-state`
 - [x] Referat i `referater/` — `2026-09-16-17-37.md` (prod-deploy) og
       `2026-09-16-18-05.md` (M5-oprydning)
 

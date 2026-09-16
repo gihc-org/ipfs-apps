@@ -24,8 +24,8 @@ Loft er etableret: WebRTC link-rum med gæsteadgang, kørende på k3s i både te
 namespace `loft-prod`, pinnet CI-SHA `d082905…`, cert fra `letsencrypt-prod`).
 M0–M4 og prod-deployet er færdige, og M5-oprydningen er gennemført i repoet:
 `chat/` hedder nu `loft/`, og compose-, ansible-, caddy- og IPFS-resterne er
-slettet. Tilbage er at flytte ADR-drafts 0027/0028 til `~/projects/adrs/` samt
-Android-lyd for **talende** brugere (kendt platformsegenskab, se
+slettet. ADR 0027 og 0028 er accepteret og flyttet til `~/projects/adrs/`.
+Tilbage er Android-lyd for **talende** brugere (kendt platformsegenskab, se
 [TODO.md](TODO.md)).
 
 Den gamle chat-arkitektur (konti/JWT, DM, filoverførsel, Caddy + Docker Compose,
@@ -34,7 +34,7 @@ IPFS/DNSLink) er ude af den aktive sti; historikken står i
 
 Læs først: [README.md](README.md), [MIGRATION.md](MIGRATION.md),
 [TODO.md](TODO.md), [runbooks/loft-deploy.md](runbooks/loft-deploy.md) og
-ADR-drafts i `adr-drafts/` (0027, 0028).
+Loft-ADR'erne i `~/projects/adrs/` (0027 og 0028).
 
 ## Project Overview
 
@@ -51,9 +51,11 @@ k8s/test/          Manifester for loft.test.gihc.online (namespace loft-test)
 k8s/prod/          Manifester for loft.gihc.online (namespace loft-prod, SHA-pin)
 scripts/           DNS-record, smoke-test (REST+WS+DB), semantisk review
 runbooks/          Drift, fejlfinding og deploy
-adr-drafts/        ADR-udkast 0027 (link-rum/k3s) og 0028 (mesh)
 .github/workflows/ CI: bygger begge images og kører e2e på Chromium
 ```
+
+Arkitekturbeslutninger ligger i det delte ADR-repo (`~/projects/adrs/`) — for
+Loft især 0027 (link-rum/k3s) og 0028 (mesh).
 
 ### Arkitektur
 
@@ -191,8 +193,8 @@ Beslutninger der stadig gælder for Loft:
 | [0024](~/projects/adrs/0024-cis-docker-benchmark.md) | CIS Docker Benchmark (non-root, read-only fs) |
 | [0025](~/projects/adrs/0025-ipfs-apps-smoke-test.md) | Smoke test af deployet miljø |
 | [0026](~/projects/adrs/0026-logging-and-secrets.md) | Logging og secrets |
-| `adr-drafts/0027` | Loft: link-rum med gæsteadgang på k3s — afløser 0008–0010 og 0019 |
-| `adr-drafts/0028` | Loft: mesh-topologi og per-deltager-signalering — afløser 0016 og 0018 |
+| [0027](~/projects/adrs/0027-loft-link-rooms.md) | Loft: link-rum med gæsteadgang på k3s — afløser 0008–0010 og 0019 |
+| [0028](~/projects/adrs/0028-loft-group-mesh.md) | Loft: mesh-topologi og per-deltager-signalering — afløser 0016 og 0018 |
 
 ### Projekt-specifikke detaljer
 
