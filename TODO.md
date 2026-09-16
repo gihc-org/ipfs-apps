@@ -13,16 +13,15 @@ genbruges.
 
 Kopér blokken herunder som første besked til agenten:
 
-> Fortsæt arbejdet på **Loft** (M0–M4 færdige, prod deployet). Alt er merget
-> til `trunk` og pushet; CI bygger `ghcr.io/gihc-org/loft{,-web}` ved push.
-> Start en **frisk session** frem for at genoptage en gammel: de tidligere
-> sessioner er meget tunge (den forrige sendte ~286.000 tokens pr. request og
-> ramte "idle timeout waiting for SSE"), og alt nødvendigt står i filerne
-> herunder.
+> Fortsæt arbejdet på **Loft** (M0–M5 færdige; test og prod i drift). Alt er
+> merget til `trunk` og pushet; CI bygger `ghcr.io/gihc-org/loft{,-web}` ved
+> push. Start en **frisk session** frem for at genoptage en gammel: de tidligere
+> sessioner er meget tunge (én sendte ~286.000 tokens pr. request og ramte
+> "idle timeout waiting for SSE"), og alt nødvendigt står i filerne herunder.
 >
-> Læs først `README.md`, `MIGRATION.md`, `TODO.md` og ADR 0027
-> (`~/projects/adrs/0027-loft-link-rooms.md`) + 0028
-> (`~/projects/adrs/0028-loft-group-mesh.md`).
+> Læs først `README.md`, `TODO.md` (især "Telefon-test af Android-lyd") og
+> `AGENTS.md`. ADR 0027 (`~/projects/adrs/0027-loft-link-rooms.md`) og 0028
+> (`~/projects/adrs/0028-loft-group-mesh.md`) er de gældende beslutninger.
 >
 > Tilstand:
 > - Backend (`loft/`, omdøbt fra `chat/` i M5): Rust/Axum, krate/binær `loft`.
@@ -31,14 +30,18 @@ Kopér blokken herunder som første besked til agenten:
 >   (join/roster/signal/media-state/closed), `/healthz`, TTL-cleanup.
 >   Migrationer kører automatisk ved start.
 > - Frontend: `frontend/loft.html` + `frontend/rtc.js` (mesh, perfect
->   negotiation). `index.html` redirecter til loft.html.
+>   negotiation, join muted) og `frontend/audio-debug.html` til
+>   telefon-diagnostik. `index.html` redirecter til loft.html.
 > - Testmiljø: `k8s/test/` (namespace `loft-test`) — postgres + PVC, api, web
->   og ingress — kører på `loft.test.gihc.online` med CI-image `2816181…` og er
+>   og ingress — kører på `loft.test.gihc.online` på CI-image `:latest` og er
 >   accepteret i hånden (smoke-test 19/19, e2e 9 passed / 2 skipped i både
 >   Chromium og Firefox).
-> - Prod: `loft.gihc.online` blev **deployet 2026-09-16** — namespace
->   `loft-prod`, pinnet CI-SHA `d082905…`, betroet `letsencrypt-prod`-cert,
->   smoke-test 19/19 og e2e grøn i Chromium og Firefox (inkl. TURN-relay).
+> - Prod: `loft.gihc.online` (namespace `loft-prod`) blev **deployet
+>   2026-09-16** og kører pinnet CI-SHA `d082905…` med betroet
+>   `letsencrypt-prod`-cert. Smoke-test 19/19 og e2e grøn i Chromium og Firefox
+>   (inkl. TURN-relay). M5-committet ændrer kun placeringen af koden og
+>   binærnavnet, så prod er ikke rullet videre — næste reelle kodeændring bør
+>   bumpe pinnen (CI har allerede bygget `eed0026…`).
 > - TURN er flyttet til platformen: `turn.gihc.online` (namespace `coturn` i
 >   `~/projects/infra`, ADR 0003), hærdet og med `--denied-peer-ip` + kvoter.
 >   Appen har ingen egen coturn længere — `config.js` peger på den fælles
@@ -48,17 +51,19 @@ Kopér blokken herunder som første besked til agenten:
 >   deployede miljø i **både Chromium og Firefox**; de to TURN-tests kræver
 >   `TURN_URL` og er derfor de eneste der springes over som standard.
 >
-> M5-oprydningen er gennemført i repoet 2026-09-16 (`chat/` → `loft/`,
+> M5-oprydningen og ADR-arbejdet er færdigt: `chat/` → `loft/`,
 > compose-/ansible-/caddy-/IPFS-rester slettet, `AGENTS.md` og runbooks
-> opdateret).
+> opdateret, og ADR 0027/0028 accepteret i `~/projects/adrs/` (begge repos er
+> pushet).
 >
-> ADR-drafts er accepteret og flyttet til `~/projects/adrs/` (0027 og 0028,
-> opdateret så coturn ligger i platformen og `presence`-beskederne er væk).
->
-> Næste opgave:
-> 1. Talende brugere på Android: modpartens lyd går i telefonens højttaler
->    (lyttere er dækket af "join muted" og capture-frigivelse). Afbøderinger
->    står i afsnittet "Kendt begrænsning: talende brugere på Android".
+> Næste opgave (kræver brugerens telefon):
+> 1. Kør **"Telefon-test af Android-lyd"** i `TODO.md`: baseline i Firefox
+>    (mikrofon slukket og tændt), derefter Chrome for Android og et
+>    ledningsbaseret headset. Formålet er at afgøre, om fundet er en
+>    Gecko-begrænsning eller en platformsegenskab — og dermed om afbøderingen er
+>    "tal fra Chrome på Android" eller "brug kabel, eller lad telefonen være
+>    lytteren". Skriv målingerne ind i TODO (dato, telefon, Android- og
+>    browser-version) og opdatér README's "Lyd-routing på telefoner".
 > Adgang til k3s/pass/infra-repoet kræver brugerens godkendelse — spørg før
 > trin uden for repoet. Til k3s-arbejde skal SSH-tunnelen være åben:
 > `ssh -o ServerAliveInterval=20 -L 6443:localhost:6443 -N -f hetzner-k3s`.
@@ -78,6 +83,8 @@ Kopér blokken herunder som første besked til agenten:
 > begge browsere er dæmpet i `playwright.config.ts`; `.guidelines` er et
 > soft-link til `~/projects/guidelines`, og `scripts/check.sh` springer reviewet
 > over ("fail open"), hvis `claude`-kaldet ikke kan komme på nettet.
+> Repo-navnet `ipfs-apps` er stadig fra IPFS-tiden (skal ændres uden for
+> repoet, hvis det skal skiftes).
 
 ## Branche og CI (afsluttet 2026-09-13)
 
@@ -421,6 +428,56 @@ earpluggene). Mulige afbøderinger at afprøve:
 - Ledningsbaseret headset på telefonen i stedet for Bluetooth.
 - Lade telefonen være lytteren og tale fra en computer i samme loft.
 
+### Telefon-test af Android-lyd (næste skridt — kræver brugerens telefon)
+
+Formålet er at afgøre, om fundet er en **Gecko-begrænsning** eller en
+**platformsegenskab**, og om der findes en brugbar afbødering for en talende
+bruger. Testen kræver ingen udviklerværktøjer på telefonen.
+
+**Forudsætninger**
+
+- Samme Bluetooth-earplugs hele vejen (og gerne et ledningsbaseret headset ved
+  hånden til trin 4).
+- En laptop som modpart i samme loft, så telefonens mikrofon er den eneste
+  variabel.
+- Loft åbnet på telefonen: `https://loft.gihc.online` (prod) eller
+  `https://loft.test.gihc.online` (test) — samme frontend begge steder.
+- Notér for hvert trin: **hvor landede modpartens lyd** (earplugs eller
+  telefonens højttaler), og **blev en podcast i earpluggene tavs**, da capture
+  startede.
+
+**Protokol**
+
+- [ ] 1. **Firefox, mikrofon slukket** (baseline): podcast kører i earpluggene,
+      laptop som modpart. Lyden skal blande sig ind i podcasten uden at overtage
+      ruten.
+- [ ] 2. **Firefox, mikrofon tændt**: forventet fejl — lyden går i telefonens
+      højttaler (bekræftet 2026-09-13). Gentages for at have målingen på prod.
+- [ ] 3. **Chrome for Android, mikrofon tændt** (hvis installeret): Chrome
+      bruger ikke Gecko's audio-stak. Lander lyden i earpluggene her, er fundet
+      Firefox-specifikt og grundlag for en bugrapport; går den i højttaleren, er
+      det platformsegenskaben.
+- [ ] 4. **Ledningsbaseret headset i stedet for Bluetooth** (samme browser som
+      trin 3): afgør om "brug kabel" er den anbefalede afbødering.
+- [ ] 5. **Uafhængig kontroltest** (kun hvis trin 3 er tvetydigt): WebRTC-
+      projektets eget lydeksempel
+      `https://webrtc.github.io/samples/src/content/peerconnection/audio/` i
+      samme browser. Skelner "vores frontend" fra "browser/Android".
+- [ ] 6. **`audio-debug.html`** på telefonen: kør tonen og skift output-enhed.
+      Kommer der enheder i listen, og virker skiftet? Gem JSON-rapporten.
+
+**Konklusion og opfølgning**
+
+- Chrome giver earplugs, Firefox ikke → **Gecko-begrænsning**: skriv bugrapport,
+  og anbefal i README at man taler fra Chrome på Android indtil videre.
+- Ingen af browserne giver earplugs med capture aktiv → **platformsegenskab**:
+  bekræft README's "Kendt begrænsning", hvor afbøderingen er ledningsbaseret
+  headset eller at telefonen er lytteren.
+- Skriv målingerne ind i dette afsnit (dato, telefonmodel, Android-version,
+  browser-version), og opdatér README's "Lyd-routing på telefoner".
+- Ryd op i de ubekræftede afbøderingspunkter ovenfor, så TODO'en afspejler hvad
+  der faktisk virker.
+
 ### Diagnostikværktøj til telefonen
 
 `frontend/audio-debug.html` (åbnes på telefonen, fx
@@ -464,9 +521,10 @@ Testplan på telefonen (samme earplugs hele vejen):
 - [x] Diagnostikværktøj: `frontend/audio-debug.html` + e2e i begge browsere
 - [x] `setSinkId`-vælger i `loft.html` ("Lyd ud" i værktøjslinjen, gemt i
       localStorage `loft.sinkId`, skjult når browseren ikke eksponerer enheder)
-- [ ] Afklar om det er Firefox-specifikt: Google Meet i **Firefox** på samme
-      telefon med samme earplugs (punkt 1–2 ovenfor — kræver brugerens telefon;
-      brug WebRTC-lydeksemplet, ikke Meet)
+- [ ] Afklar om det er Firefox-specifikt — kør **"Telefon-test af Android-lyd"**
+      ovenfor (Chrome for Android + ledningsbaseret headset; kræver brugerens
+      telefon). Google Meet er en død ende i Firefox på Android, så brug
+      WebRTC-lydeksemplet eller Loft selv som kontroltest
 - [x] Afklaret 2026-09-13: **video er udelukket** (tone med videospor gik til
       earpluggene), og capture er synderen — et aktivt capture flytter hele
       telefonens medierute til opkaldsprofil (podcasten blev tavs), og
